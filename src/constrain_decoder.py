@@ -53,4 +53,3 @@ class ConstrainedDecoder:
             "Decoded output based on input_ids with "
             f"{len(self.encoded_function_definitions)} constraints"
         )
-
