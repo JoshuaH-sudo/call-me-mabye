@@ -32,6 +32,13 @@ class ConstrainedDecoder:
     """
     Decodes model outputs while constraining choices
     to known function definitions.
+
+    Token and ID flow (high level):
+
+    text -> tokenizer -> token_ids -> model logits -> constrained choice
+
+    Example:
+    "* hello *" -> [42, 991, 17] -> logits over vocab -> keep only one id
     """
 
     available_functions: list[FunctionDefinition]
@@ -60,7 +67,15 @@ class ConstrainedDecoder:
         if allowed_token_id < 0 or allowed_token_id >= len(logits):
             raise RuntimeError("allowed token id is out of vocabulary bounds")
 
-        # Constrained decoding: mask every token except the allowed one.
+        # Constrained decoding at one generation step:
+        #
+        # vocab ids:      [0, 1, 2, 3, 4, ...]
+        # raw logits:     [a, b, c, d, e, ...]
+        # allowed id:                 3
+        # masked logits:  [-inf, -inf, -inf, d, -inf, ...]
+        # selected id:                3
+        #
+        # This enforces a single valid next token.
         constrained_logits = [float("-inf")] * len(logits)
         constrained_logits[allowed_token_id] = logits[allowed_token_id]
 
@@ -84,6 +99,15 @@ class ConstrainedDecoder:
         encoded_target = self.llm.encode(target_text)
         target_ids = cast(list[int], encoded_target[0].tolist())
 
+        # How text becomes constrained generation target:
+        #
+        # target_text      = "* original given text *"
+        # target token ids = [t0, t1, t2, ..., tn]
+        #
+        # We then force generation of t0, then t1, ..., then tn.
+        # After each forced token, we append it to rolling_prefix so the next
+        # logits are conditioned on all previously generated tokens.
+
         generated_ids: list[int] = []
         rolling_prefix = list(prefix_input_ids)
         for required_token_id in target_ids:
@@ -91,9 +115,12 @@ class ConstrainedDecoder:
                 prefix_ids=rolling_prefix,
                 allowed_token_id=required_token_id,
             )
+            # Keep track of generated output token ids.
             generated_ids.append(selected_token_id)
+            # Update model context for the next generation step.
             rolling_prefix.append(selected_token_id)
 
+        # Decode only generated ids so output is exactly constrained segment.
         return self.llm.decode(generated_ids)
 
     def decode(self, input_ids: Tensor) -> str:

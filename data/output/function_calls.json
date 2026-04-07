@@ -1,0 +1,11 @@
+{"prompt":"What is the sum of 2 and 3?","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* What is the sum of 2 and 3? *"}}
+{"prompt":"What is the sum of 265 and 345?","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* What is the sum of 265 and 345? *"}}
+{"prompt":"Greet shrek","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Greet shrek *"}}
+{"prompt":"Greet john","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Greet john *"}}
+{"prompt":"Reverse the string 'hello'","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Reverse the string 'hello' *"}}
+{"prompt":"Reverse the string 'world'","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Reverse the string 'world' *"}}
+{"prompt":"What is the square root of 16?","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* What is the square root of 16? *"}}
+{"prompt":"Calculate the square root of 144","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Calculate the square root of 144 *"}}
+{"prompt":"Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS *"}}
+{"prompt":"Replace all vowels in 'Programming is fun' with asterisks","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Replace all vowels in 'Programming is fun' with asterisks *"}}
+{"prompt":"Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'","name":"fn_demo_wrapped_text","parameters":{"wrapped_text":"* Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat' *"}}

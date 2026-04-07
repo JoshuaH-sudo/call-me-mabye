@@ -1,4 +1,6 @@
 import sys
+from pathlib import Path
+from typing import cast
 
 from llm_sdk import Small_LLM_Model
 import numpy as np
@@ -15,6 +17,14 @@ class DatasetSummary(BaseModel):
     average_prompt_length: float
 
 
+class FunctionCallResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str
+    name: str
+    parameters: dict[str, object]
+
+
 def summarize_dataset(
     functions: list[FunctionDefinition], prompts: list[PromptCase]
 ) -> DatasetSummary:
@@ -29,6 +39,20 @@ def summarize_dataset(
         prompt_count=len(prompts),
         average_prompt_length=average_length,
     )
+
+
+def append_results(
+    output_file: Path,
+    results: list[FunctionCallResult],
+) -> None:
+    try:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with output_file.open("a", encoding="utf-8") as handle:
+            for item in results:
+                handle.write(item.model_dump_json())
+                handle.write("\n")
+    except OSError as exc:
+        raise RuntimeError(f"unable to write output file {output_file}: {exc}")
 
 
 def main() -> int:
@@ -49,29 +73,31 @@ def main() -> int:
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(available_functions=functions, llm=llm)
 
-    # Build an initial prefix context. Constrained decoding will extend this
-    # prefix token-by-token and enforce one allowed next token per step.
-    prompt = "yeet"
-    encoded = llm.encode(prompt)
-    prefix_ids = encoded[0].tolist()
+    # For now we append demo results (not final JSON output format).
+    generated_results: list[FunctionCallResult] = []
+    for prompt_case in prompts:
+        encoded_prompt = llm.encode(prompt_case.prompt)
+        prompt_ids = cast(list[int], encoded_prompt[0].tolist())
+        wrapped_text = decoder.generate_wrapped_text(
+            prefix_input_ids=prompt_ids,
+            original_text=prompt_case.prompt,
+        )
+        generated_results.append(
+            FunctionCallResult(
+                prompt=prompt_case.prompt,
+                name="fn_demo_wrapped_text",
+                parameters={"wrapped_text": wrapped_text},
+            )
+        )
 
-    # Read logits once to show the unconstrained model distribution.
-    logits = llm.get_logits_from_input_ids(prefix_ids)
+    try:
+        append_results(loader.paths.output_file, generated_results)
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
+        return 1
 
-    # Basic constrained-decoding example:
-    # force the generated text to exactly match "* {original text} *".
-    returned_text = decoder.generate_wrapped_text(
-        prefix_input_ids=prefix_ids,
-        original_text=prompt,
-    )
-    print(f"original text: '{prompt}'")
-    print(f"Encoded: {encoded}")
-    print(f"Logits: {logits[:5]}...")
-    print(f"Decoded: {returned_text}")
-    print(
-        "Function constraints encoded: "
-        f"{len(decoder.encoded_function_definitions)}"
-    )
+    print(f"Appended {len(generated_results)} result line(s)")
+    print(f"Output path: {loader.paths.output_file}")
 
     print("call-me-maybe scaffold")
     print(f"Functions loaded: {summary.function_count}")
