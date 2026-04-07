@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from llm_sdk import Small_LLM_Model
@@ -40,6 +41,7 @@ class AppPaths(BaseModel):
 
     functions_file: Path
     prompts_file: Path
+    output_file: Path
 
 
 class DatasetSummary(BaseModel):
@@ -67,9 +69,13 @@ def load_functions(path: Path) -> list[FunctionDefinition]:
     try:
         return [FunctionDefinition.model_validate(item) for item in payload]
     except TypeError as exc:
-        raise RuntimeError(f"functions file must contain a JSON array: {path}") from exc
+        raise RuntimeError(
+            f"functions file must contain a JSON array: {path}"
+        ) from exc
     except ValidationError as exc:
-        raise RuntimeError(f"invalid function definition in {path}: {exc}") from exc
+        raise RuntimeError(
+            f"invalid function definition in {path}: {exc}"
+        ) from exc
 
 
 def load_prompts(path: Path) -> list[PromptCase]:
@@ -77,7 +83,9 @@ def load_prompts(path: Path) -> list[PromptCase]:
     try:
         return [PromptCase.model_validate(item) for item in payload]
     except TypeError as exc:
-        raise RuntimeError(f"prompt file must contain a JSON array: {path}") from exc
+        raise RuntimeError(
+            f"prompt file must contain a JSON array: {path}"
+        ) from exc
     except ValidationError as exc:
         raise RuntimeError(f"invalid prompt entry in {path}: {exc}") from exc
 
@@ -85,8 +93,12 @@ def load_prompts(path: Path) -> list[PromptCase]:
 def summarize_dataset(
     functions: list[FunctionDefinition], prompts: list[PromptCase]
 ) -> DatasetSummary:
-    prompt_lengths = np.array([len(item.prompt) for item in prompts], dtype=np.float64)
-    average_length = float(prompt_lengths.mean()) if prompt_lengths.size else 0.0
+    prompt_lengths = np.array(
+        [len(item.prompt) for item in prompts], dtype=np.float64
+    )
+    average_length = (
+        float(prompt_lengths.mean()) if prompt_lengths.size else 0.0
+    )
     return DatasetSummary(
         function_count=len(functions),
         prompt_count=len(prompts),
@@ -94,16 +106,32 @@ def summarize_dataset(
     )
 
 
-def build_paths(project_root: Path) -> AppPaths:
-    return AppPaths(
-        functions_file=project_root / "data" / "input" / "functions_definition.json",
-        prompts_file=project_root / "data" / "input" / "function_calling_tests.json",
-    )
+def build_paths(argv: list[str]) -> AppPaths:
+    if len(argv) != 6:
+        raise RuntimeError(
+            "usage: python -m src --functions_definition <path> --input <path> --output <path>"
+        )
+
+    arguments = dict(zip(argv[::2], argv[1::2], strict=True))
+
+    try:
+        return AppPaths(
+            functions_file=Path(arguments["--functions_definition"]),
+            prompts_file=Path(arguments["--input"]),
+            output_file=Path(arguments["--output"]),
+        )
+    except KeyError as exc:
+        raise RuntimeError(
+            f"missing required argument: {exc.args[0]}"
+        ) from None
 
 
 def main() -> int:
-    project_root = Path(__file__).resolve().parents[2]
-    paths = build_paths(project_root)
+    try:
+        paths = build_paths(sys.argv[1:])
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
+        return 1
 
     try:
         functions = load_functions(paths.functions_file)
@@ -113,7 +141,7 @@ def main() -> int:
         print(f"Error: {exc}")
         return 1
 
-    Small_LLM_Model()
+    llm = Small_LLM_Model()
 
     print("call-me-maybe scaffold")
     print(f"Functions loaded: {summary.function_count}")
