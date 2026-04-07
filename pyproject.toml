@@ -23,6 +23,9 @@ build-backend = "hatchling.build"
 [tool.uv.sources]
 llm-sdk = { path = "llm_sdk", editable = true }
 
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [tool.mypy]
 python_version = "3.10"
 exclude = "(^llm_sdk/)|(^\\.venv/)"

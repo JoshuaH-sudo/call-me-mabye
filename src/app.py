@@ -138,6 +138,10 @@ def main() -> int:
         return 1
 
     llm = Small_LLM_Model()
+    encoded = llm.encode("Add 2 and 2 together and give me the result")
+    returned_text = llm.decode(encoded[0])
+    print(f"Encoded: {encoded}")
+    print(f"Decoded: {returned_text}")
 
     print("call-me-maybe scaffold")
     print(f"Functions loaded: {summary.function_count}")
