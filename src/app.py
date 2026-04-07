@@ -48,18 +48,26 @@ def main() -> int:
 
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(available_functions=functions, llm=llm)
-    encoded = llm.encode("hello")
-    logits = llm.get_logits_from_input_ids(encoded[0].tolist())
-    returned_text = llm.decode([[24342]])
-    path_to_merges_file = llm.get_path_to_merges_file()
-    path_to_tokenizer_file = llm.get_path_to_tokenizer_file()
-    path_to_vocab_file = llm.get_path_to_vocab_file()
+
+    # Build an initial prefix context. Constrained decoding will extend this
+    # prefix token-by-token and enforce one allowed next token per step.
+    prompt = "yeet"
+    encoded = llm.encode(prompt)
+    prefix_ids = encoded[0].tolist()
+
+    # Read logits once to show the unconstrained model distribution.
+    logits = llm.get_logits_from_input_ids(prefix_ids)
+
+    # Basic constrained-decoding example:
+    # force the generated text to exactly match "* {original text} *".
+    returned_text = decoder.generate_wrapped_text(
+        prefix_input_ids=prefix_ids,
+        original_text=prompt,
+    )
+    print(f"original text: '{prompt}'")
     print(f"Encoded: {encoded}")
     print(f"Logits: {logits[:5]}...")
     print(f"Decoded: {returned_text}")
-    print(f"Path to merges file: {path_to_merges_file}")
-    print(f"Path to tokenizer file: {path_to_tokenizer_file}")
-    print(f"Path to vocab file: {path_to_vocab_file}")
     print(
         "Function constraints encoded: "
         f"{len(decoder.encoded_function_definitions)}"
