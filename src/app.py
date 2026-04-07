@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from llm_sdk import Small_LLM_Model
+from llm_sdk.llm_sdk import Small_LLM_Model
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -66,12 +66,10 @@ def _load_json(path: Path) -> object:
 
 def load_functions(path: Path) -> list[FunctionDefinition]:
     payload = _load_json(path)
+    if not isinstance(payload, list):
+        raise RuntimeError(f"functions file must contain a JSON array: {path}")
     try:
         return [FunctionDefinition.model_validate(item) for item in payload]
-    except TypeError as exc:
-        raise RuntimeError(
-            f"functions file must contain a JSON array: {path}"
-        ) from exc
     except ValidationError as exc:
         raise RuntimeError(
             f"invalid function definition in {path}: {exc}"
@@ -80,12 +78,10 @@ def load_functions(path: Path) -> list[FunctionDefinition]:
 
 def load_prompts(path: Path) -> list[PromptCase]:
     payload = _load_json(path)
+    if not isinstance(payload, list):
+        raise RuntimeError(f"prompt file must contain a JSON array: {path}")
     try:
         return [PromptCase.model_validate(item) for item in payload]
-    except TypeError as exc:
-        raise RuntimeError(
-            f"prompt file must contain a JSON array: {path}"
-        ) from exc
     except ValidationError as exc:
         raise RuntimeError(f"invalid prompt entry in {path}: {exc}") from exc
 
