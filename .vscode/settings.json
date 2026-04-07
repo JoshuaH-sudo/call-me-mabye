@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
 
     // Enable linting on save and set the provider
     "editor.codeActionsOnSave": {
@@ -10,7 +10,7 @@
     "python.linting.lintOnSave": true,
 
     // Run the Flake8 server with the workspace virtualenv and bundled toolchain.
-    "flake8.interpreter": ["${workspaceFolder}/venv/bin/python"],
+    "flake8.interpreter": ["${workspaceFolder}/.venv/bin/python"],
     "flake8.importStrategy": "useBundled",
 
     // Optional: Pass arguments to Flake8 for customization
