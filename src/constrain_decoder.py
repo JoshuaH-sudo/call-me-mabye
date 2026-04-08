@@ -42,7 +42,7 @@ class ConstrainedDecoder:
     """
 
     available_functions: list[FunctionDefinition]
-    encoded_function_definitions: list[Tensor]
+    encoded_output_candidates: list[list[int]]
     llm: Small_LLM_Model
 
     def __init__(
@@ -52,20 +52,92 @@ class ConstrainedDecoder:
     ):
         self.llm = llm
         self.available_functions = available_functions
-        self.encoded_function_definitions = [
-            self.llm.encode(json.dumps(item.model_dump(), sort_keys=True))
-            for item in available_functions
+        self.encoded_output_candidates = [
+            self._encode_text(candidate)
+            for candidate in self._build_output_candidates(available_functions)
         ]
+
+    def _encode_text(self, text: str) -> list[int]:
+        return cast(list[int], self.llm.encode(text)[0].tolist())
+
+    def _default_parameter_value(self, parameter_type: str) -> object:
+        if parameter_type == "string":
+            return ""
+        if parameter_type == "number":
+            return 0
+        raise RuntimeError(
+            "unsupported parameter type for constrained decoding: "
+            f"{parameter_type}"
+        )
+
+    def _build_output_candidates(
+        self,
+        available_functions: list[FunctionDefinition],
+    ) -> list[str]:
+        candidates: list[str] = []
+        for function_definition in available_functions:
+            parameters: dict[str, object] = {}
+            for name, definition in function_definition.parameters.items():
+                parameters[name] = self._default_parameter_value(
+                    definition.type
+                )
+
+            candidates.append(
+                json.dumps(
+                    {
+                        "name": function_definition.name,
+                        "parameters": parameters,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            )
+        return candidates
+
+    def _next_allowed_token_ids(
+        self,
+        generated_ids: list[int],
+    ) -> list[int]:
+        allowed_token_ids: list[int] = []
+        seen_token_ids: set[int] = set()
+        for candidate_ids in self.encoded_output_candidates:
+            prefix_length = len(generated_ids)
+            if prefix_length >= len(candidate_ids):
+                continue
+            if candidate_ids[:prefix_length] != generated_ids:
+                continue
+
+            next_token_id = candidate_ids[prefix_length]
+            if next_token_id in seen_token_ids:
+                continue
+
+            seen_token_ids.add(next_token_id)
+            allowed_token_ids.append(next_token_id)
+
+        if not allowed_token_ids:
+            raise RuntimeError(
+                "no valid constrained JSON continuation available"
+            )
+        return allowed_token_ids
+
+    def _is_complete_output(self, generated_ids: list[int]) -> bool:
+        return any(
+            generated_ids == candidate_ids
+            for candidate_ids in self.encoded_output_candidates
+        )
 
     def _force_token(
         self,
         prefix_ids: list[int],
-        allowed_token_id: int,
+        allowed_token_ids: list[int],
     ) -> int:
         # Get next-token logits from the model for the current prefix.
         logits = self.llm.get_logits_from_input_ids(prefix_ids)
-        if allowed_token_id < 0 or allowed_token_id >= len(logits):
-            raise RuntimeError("allowed token id is out of vocabulary bounds")
+        for allowed_token_id in allowed_token_ids:
+            if allowed_token_id < 0 or allowed_token_id >= len(logits):
+                raise RuntimeError(
+                    "allowed token id is out of vocabulary bounds"
+                )
 
         # Constrained decoding at one generation step:
         #
@@ -77,7 +149,8 @@ class ConstrainedDecoder:
         #
         # This enforces a single valid next token.
         constrained_logits = [float("-inf")] * len(logits)
-        constrained_logits[allowed_token_id] = logits[allowed_token_id]
+        for allowed_token_id in allowed_token_ids:
+            constrained_logits[allowed_token_id] = logits[allowed_token_id]
 
         # Greedy selection on constrained logits always returns
         # allowed_token_id.
@@ -86,51 +159,24 @@ class ConstrainedDecoder:
             key=lambda index: constrained_logits[index],
         )
 
-    def generate_wrapped_text(
+    def force_json_output(
         self,
         prefix_input_ids: list[int],
-        original_text: str,
     ) -> str:
-        """
-        Basic constrained-decoding demo that forces output to:
-        * {original_text} *
-        """
-        target_text = f"* {original_text} *"
-        encoded_target = self.llm.encode(target_text)
-        target_ids = cast(list[int], encoded_target[0].tolist())
-
-        # How text becomes constrained generation target:
-        #
-        # target_text      = "* original given text *"
-        # target token ids = [t0, t1, t2, ..., tn]
-        #
-        # We then force generation of t0, then t1, ..., then tn.
-        # After each forced token, we append it to rolling_prefix so the next
-        # logits are conditioned on all previously generated tokens.
-
         generated_ids: list[int] = []
         rolling_prefix = list(prefix_input_ids)
-        for required_token_id in target_ids:
+
+        while not self._is_complete_output(generated_ids):
+            allowed_token_ids = self._next_allowed_token_ids(generated_ids)
             selected_token_id = self._force_token(
                 prefix_ids=rolling_prefix,
-                allowed_token_id=required_token_id,
+                allowed_token_ids=allowed_token_ids,
             )
-            # Keep track of generated output token ids.
             generated_ids.append(selected_token_id)
-            # Update model context for the next generation step.
             rolling_prefix.append(selected_token_id)
 
-        # Decode only generated ids so output is exactly constrained segment.
         return self.llm.decode(generated_ids)
 
     def decode(self, input_ids: Tensor) -> str:
-        # Keep decode as a simple wrapper for the basic demonstration.
         prefix_ids = cast(list[int], input_ids[0].tolist())
-        wrapped_text = self.generate_wrapped_text(
-            prefix_input_ids=prefix_ids,
-            original_text="original given text",
-        )
-        return (
-            "Decoded output based on input_ids with constrained format: "
-            f"{wrapped_text}"
-        )
+        return self.force_json_output(prefix_ids)

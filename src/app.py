@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from typing import cast
@@ -73,22 +74,27 @@ def main() -> int:
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(available_functions=functions, llm=llm)
 
-    # For now we append demo results (not final JSON output format).
+    # First milestone: emit schema-shaped JSON strings chosen under token
+    # constraints. Parameter values are placeholder defaults.
     generated_results: list[FunctionCallResult] = []
     for prompt_case in prompts:
         encoded_prompt = llm.encode(prompt_case.prompt)
         prompt_ids = cast(list[int], encoded_prompt[0].tolist())
-        wrapped_text = decoder.generate_wrapped_text(
+        output = decoder.force_json_output(
             prefix_input_ids=prompt_ids,
-            original_text=prompt_case.prompt,
         )
+        payload = json.loads(output)
         generated_results.append(
             FunctionCallResult(
                 prompt=prompt_case.prompt,
-                name="fn_demo_wrapped_text",
-                parameters={"wrapped_text": wrapped_text},
+                name=payload["name"],
+                parameters=payload["parameters"],
             )
         )
+
+    print("Generated results:")
+    for item in generated_results:
+        print(item)
 
     try:
         append_results(loader.paths.output_file, generated_results)
