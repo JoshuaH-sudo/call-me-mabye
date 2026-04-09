@@ -39,6 +39,18 @@ class ConstrainedDecoder:
 
     Example:
     "* hello *" -> [42, 991, 17] -> logits over vocab -> keep only one id
+
+    Output-shape flow:
+
+    function definitions
+        -> build fixed JSON candidates
+        -> encode each candidate into token ids
+        -> at each generation step, keep only tokens that continue
+           one of those candidates
+        -> final decoded text always matches one complete candidate
+
+    Candidate example:
+    {"name":"get_weather","parameters":{"city":"","days":0}}
     """
 
     available_functions: list[FunctionDefinition]
@@ -52,6 +64,9 @@ class ConstrainedDecoder:
     ):
         self.llm = llm
         self.available_functions = available_functions
+        # Precompute every valid JSON output shape once. Generation later
+        # becomes a prefix-matching problem over token ids instead of free-form
+        # text generation.
         self.encoded_output_candidates = [
             self._encode_text(candidate)
             for candidate in self._build_output_candidates(available_functions)
@@ -76,6 +91,18 @@ class ConstrainedDecoder:
     ) -> list[str]:
         candidates: list[str] = []
         for function_definition in available_functions:
+            # The output structure is applied here first. For every function we
+            # build one concrete JSON object with the required keys:
+            #
+            # {
+            #   "name": <function name>,
+            #   "parameters": {
+            #     <param name>: <default value with the correct JSON type>
+            #   }
+            # }
+            #
+            # This means the decoder never invents a new shape at runtime; it
+            # can only choose among these prebuilt, schema-shaped candidates.
             parameters: dict[str, object] = {}
             for name, definition in function_definition.parameters.items():
                 parameters[name] = self._default_parameter_value(
@@ -98,15 +125,38 @@ class ConstrainedDecoder:
         self,
         generated_ids: list[int],
     ) -> list[int]:
+        # generated_ids is the JSON output produced so far, already converted
+        # to token ids.
+        #
+        # Goal: find every token that can legally come next while keeping the
+        # current output as a prefix of at least one full candidate.
+        #
+        # Example:
+        # candidate A = [10, 20, 30, 40]
+        # candidate B = [10, 20, 35, 50]
+        # candidate C = [99, 88, 77]
+        # generated_ids = [10, 20]
+        #
+        # A still matches, so 30 is allowed next.
+        # B still matches, so 35 is allowed next.
+        # C no longer matches, so it is ignored.
+        #
+        # Result: allowed_token_ids = [30, 35]
         allowed_token_ids: list[int] = []
+        # Different candidates can share the same next token, so keep a small
+        # set to avoid returning duplicates.
         seen_token_ids: set[int] = set()
         for candidate_ids in self.encoded_output_candidates:
+            # candidate_ids is one complete valid JSON candidate represented as
+            # token ids.
             prefix_length = len(generated_ids)
             if prefix_length >= len(candidate_ids):
                 continue
             if candidate_ids[:prefix_length] != generated_ids:
                 continue
 
+            # If the current partial output matches the start of a
+            # candidate, only that candidate's next token is still legal.
             next_token_id = candidate_ids[prefix_length]
             if next_token_id in seen_token_ids:
                 continue
@@ -166,6 +216,20 @@ class ConstrainedDecoder:
         generated_ids: list[int] = []
         rolling_prefix = list(prefix_input_ids)
 
+        # Token-by-token constrained decoding:
+        #
+        # prompt ids --------------------------+
+        #                                      v
+        # [prompt prefix] + [generated prefix] -> logits
+        #                                      -> keep only tokens that still
+        #                                         match at least one JSON
+        #                                         candidate
+        #                                      -> pick best remaining token
+        #                                      -> append and repeat
+        #
+        # The loop stops only when generated_ids exactly equals one full
+        # candidate sequence, so the decoded string is guaranteed to match the
+        # precomputed JSON structure.
         while not self._is_complete_output(generated_ids):
             allowed_token_ids = self._next_allowed_token_ids(generated_ids)
             selected_token_id = self._force_token(

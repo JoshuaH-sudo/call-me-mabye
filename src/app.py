@@ -76,6 +76,14 @@ def main() -> int:
 
     # First milestone: emit schema-shaped JSON strings chosen under token
     # constraints. Parameter values are placeholder defaults.
+    #
+    # End-to-end output assembly:
+    # prompt text
+    #   -> model prompt ids
+    #   -> constrained decoder emits JSON like:
+    #      {"name":"...","parameters":{...}}
+    #   -> app wraps it into the final result object:
+    #      {"prompt":"original prompt","name":"...","parameters":{...}}
     generated_results: list[FunctionCallResult] = []
     for prompt_case in prompts:
         encoded_prompt = llm.encode(prompt_case.prompt)
@@ -85,6 +93,9 @@ def main() -> int:
         )
         payload = json.loads(output)
         generated_results.append(
+            # The decoder enforces only the inner function-call payload.
+            # The outer "prompt" field is attached here so each output line
+            # keeps both the source prompt and the selected function call.
             FunctionCallResult(
                 prompt=prompt_case.prompt,
                 name=payload["name"],
