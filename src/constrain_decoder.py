@@ -1,7 +1,6 @@
 import json
-from typing import cast
+from typing import Any, cast
 
-from torch import Tensor
 from pydantic import BaseModel, ConfigDict
 
 from llm_sdk import Small_LLM_Model
@@ -241,6 +240,6 @@ class ConstrainedDecoder:
 
         return self.llm.decode(generated_ids)
 
-    def decode(self, input_ids: Tensor) -> str:
+    def decode(self, input_ids: Any) -> str:
         prefix_ids = cast(list[int], input_ids[0].tolist())
         return self.force_json_output(prefix_ids)
