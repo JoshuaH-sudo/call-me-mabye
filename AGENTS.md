@@ -14,6 +14,7 @@ Build a reliable function-calling pipeline that converts prompts into schema-val
 - In src code, do not use private llm_sdk attributes or methods.
 - Function selection must be LLM-driven, not heuristic-only logic.
 - Do not edit the llm_sdk library code directly; use it as a black-box interface.
+- Must solve the exercise with constrained decoding, not by prompting the model to output JSON without constraints.
 
 # Project Constraints
 - Allowed core libraries in src include json, numpy, and pydantic.

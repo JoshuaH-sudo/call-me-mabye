@@ -31,48 +31,67 @@ def test() -> None:
     prompt = "what is 10 - 5?"
     prompt_token_ids = llm.encode(prompt)[0].tolist()
 
-    # Step 1: Build the exact output candidates we will allow the model to
-    # generate. For this experiment, each full JSON function definition is one
-    # valid target sequence.
-    encoded_function_definitions: list[list[int]] = []
+    # Step 1: Convert each function definition into one valid function-call
+    # candidate. The decoder will only be allowed to emit one of these compact
+    # JSON objects.
+    encoded_function_calls: list[list[int]] = []
     for definition in example_function_definition:
+        parameters: dict[str, object] = {}
+        for parameter_name, parameter_definition in definition[
+            "parameters"
+        ].items():
+            parameter_type = parameter_definition["type"]
+            if parameter_type == "string":
+                parameters[parameter_name] = ""
+            elif parameter_type == "number":
+                parameters[parameter_name] = 0
+            else:
+                raise RuntimeError(
+                    f"unsupported parameter type: {parameter_type}"
+                )
+
+        candidate_text = json.dumps(
+            {
+                "name": definition["name"],
+                "parameters": parameters,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
         encoded = llm.encode(
-            json.dumps(
-                definition,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
+            candidate_text,
         )[0].tolist()
-        print(f"Encoded function definition token ids: {encoded}")
-        encoded_function_definitions.append(encoded)
+        print(f"Candidate: {candidate_text}")
+        print(f"Encoded function-call token ids: {encoded}")
+        encoded_function_calls.append(encoded)
 
     print(f"Prompt token ids: {prompt_token_ids}")
 
-    # Step 2: Keep the generated output separate from the prompt. The prompt is
-    # model context only; the constraint logic must operate on generated tokens
-    # alone.
+    # Step 2: Keep the generated output separate from the prompt. The prompt
+    # remains model context only; the constraint logic operates on the output
+    # tokens we have generated so far.
     generated_token_ids: list[int] = []
     max_new_tokens = 50
     stop_reason = "max_new_tokens was reached."
 
     for _ in range(max_new_tokens):
-        # Step 3: Find the only next tokens that keep the current generated
-        # output as a prefix of at least one full candidate.
+        # Step 3: Collect the only next tokens that still keep the generated
+        # output as a prefix of at least one valid function-call candidate.
         allowed_token_ids: set[int] = set()
-        for encoded_definition in encoded_function_definitions:
+        for encoded_function_call in encoded_function_calls:
             prefix_length = len(generated_token_ids)
-            if prefix_length >= len(encoded_definition):
+            if prefix_length >= len(encoded_function_call):
                 continue
-            if encoded_definition[:prefix_length] != generated_token_ids:
+            if encoded_function_call[:prefix_length] != generated_token_ids:
                 continue
-            allowed_token_ids.add(encoded_definition[prefix_length])
+            allowed_token_ids.add(encoded_function_call[prefix_length])
 
         if not allowed_token_ids:
             stop_reason = "no valid constrained continuation remained."
             break
 
-        # Step 4: Score the next token using the prompt plus everything we have
-        # already generated, then mask out every token that is not allowed.
+        # Step 4: Score the next token using prompt + generated output, then
+        # pick the best token only from the allowed set.
         rolling_prefix = prompt_token_ids + generated_token_ids
         logits = llm.get_logits_from_input_ids(rolling_prefix)
         next_token_id = max(
@@ -80,16 +99,17 @@ def test() -> None:
             key=lambda token_id: logits[token_id],
         )
 
-        # Step 5: Append the chosen token and stop as soon as we exactly match
-        # one full allowed candidate.
+        # Step 5: Append the chosen token to the generated output.
         generated_token_ids.append(next_token_id)
         print(
             f"Generated token {next_token_id}: {llm.decode([next_token_id])!r}"
         )
 
+        # Step 6: Stop as soon as the generated output exactly matches one full
+        # valid function-call candidate.
         if any(
-            generated_token_ids == encoded_definition
-            for encoded_definition in encoded_function_definitions
+            generated_token_ids == encoded_function_call
+            for encoded_function_call in encoded_function_calls
         ):
             stop_reason = "a complete constrained candidate was generated."
             break
