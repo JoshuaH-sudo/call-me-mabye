@@ -28,7 +28,15 @@ example_function_definition = [
 
 def test() -> None:
     llm = llm_sdk.Small_LLM_Model()
-    prompt = "what is 10 - 5?"
+    prompt = "say hello to josh"
+    # Step 0: Encode the available function definitions as model context so the
+    # descriptions can influence token scores during constrained decoding.
+    function_context = json.dumps(
+        example_function_definition,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    function_context_token_ids = llm.encode(function_context)[0].tolist()
     prompt_token_ids = llm.encode(prompt)[0].tolist()
 
     # Step 1: Convert each function definition into one valid function-call
@@ -65,6 +73,7 @@ def test() -> None:
         print(f"Encoded function-call token ids: {encoded}")
         encoded_function_calls.append(encoded)
 
+    print(f"Function context token ids: {function_context_token_ids}")
     print(f"Prompt token ids: {prompt_token_ids}")
 
     # Step 2: Keep the generated output separate from the prompt. The prompt
@@ -90,9 +99,13 @@ def test() -> None:
             stop_reason = "no valid constrained continuation remained."
             break
 
-        # Step 4: Score the next token using prompt + generated output, then
-        # pick the best token only from the allowed set.
-        rolling_prefix = prompt_token_ids + generated_token_ids
+        # Step 4: Score the next token using function definitions + prompt +
+        # generated output, then pick the best token only from the allowed set.
+        # The mask still enforces correctness; the extra context only helps the
+        # model rank which constrained branch fits the prompt better.
+        rolling_prefix = (
+            function_context_token_ids + prompt_token_ids + generated_token_ids
+        )
         logits = llm.get_logits_from_input_ids(rolling_prefix)
         next_token_id = max(
             allowed_token_ids,
