@@ -1,12 +1,15 @@
+from .types import AllowedTokenIds, EncodedOutputCandidates, TokenIds
+
+
 class PrefixMatcher:
     """Finds valid next tokens from candidate-token prefixes."""
 
     def next_allowed_token_ids(
         self,
-        generated_ids: list[int],
-        encoded_output_candidates: list[list[int]],
-    ) -> list[int]:
-        allowed_token_ids: list[int] = []
+        generated_ids: TokenIds,
+        encoded_output_candidates: EncodedOutputCandidates,
+    ) -> AllowedTokenIds:
+        allowed_token_ids: AllowedTokenIds = []
         seen_token_ids: set[int] = set()
 
         for candidate_ids in encoded_output_candidates:
@@ -31,8 +34,8 @@ class PrefixMatcher:
 
     def is_complete_output(
         self,
-        generated_ids: list[int],
-        encoded_output_candidates: list[list[int]],
+        generated_ids: TokenIds,
+        encoded_output_candidates: EncodedOutputCandidates,
     ) -> bool:
         return any(
             generated_ids == candidate

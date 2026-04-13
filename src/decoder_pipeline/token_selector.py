@@ -1,5 +1,7 @@
 from llm_sdk import Small_LLM_Model
 
+from .types import AllowedTokenIds, Logits, TokenIds
+
 
 class TokenSelector:
     """Scores allowed tokens and returns the best one under constraints."""
@@ -9,10 +11,10 @@ class TokenSelector:
 
     def force_token(
         self,
-        prefix_ids: list[int],
-        allowed_token_ids: list[int],
+        prefix_ids: TokenIds,
+        allowed_token_ids: AllowedTokenIds,
     ) -> int:
-        logits = self.llm.get_logits_from_input_ids(prefix_ids)
+        logits: Logits = self.llm.get_logits_from_input_ids(prefix_ids)
         for allowed_token_id in allowed_token_ids:
             if allowed_token_id < 0 or allowed_token_id >= len(logits):
                 raise RuntimeError(

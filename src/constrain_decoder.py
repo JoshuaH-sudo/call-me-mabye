@@ -2,11 +2,15 @@ from typing import Any, cast
 
 from llm_sdk import Small_LLM_Model
 from .decoder_pipeline import (
+    AllowedTokenIds,
     CandidateBuilder,
+    EncodedOutputCandidates,
     FunctionDefinition,
+    OutputCandidates,
     ParameterDefinition,
     PrefixMatcher,
     ReturnDefinition,
+    TokenIds,
     TokenSelector,
 )
 
@@ -44,8 +48,8 @@ class ConstrainedDecoder:
     """
 
     available_functions: list[FunctionDefinition]
-    encoded_output_candidates: list[list[int]]
-    output_candidates: list[str]
+    encoded_output_candidates: EncodedOutputCandidates
+    output_candidates: OutputCandidates
     llm: Small_LLM_Model
     candidate_builder: CandidateBuilder
     prefix_matcher: PrefixMatcher
@@ -70,7 +74,7 @@ class ConstrainedDecoder:
         ]
 
     def _encode_text(self, text: str) -> list[int]:
-        return cast(list[int], self.llm.encode(text)[0].tolist())
+        return cast(TokenIds, self.llm.encode(text)[0].tolist())
 
     def rebuild_candidates_for_prompt(self, prompt: str) -> None:
         self.output_candidates = (
@@ -86,14 +90,14 @@ class ConstrainedDecoder:
 
     def _next_allowed_token_ids(
         self,
-        generated_ids: list[int],
-    ) -> list[int]:
+        generated_ids: TokenIds,
+    ) -> AllowedTokenIds:
         return self.prefix_matcher.next_allowed_token_ids(
             generated_ids=generated_ids,
             encoded_output_candidates=self.encoded_output_candidates,
         )
 
-    def _is_complete_output(self, generated_ids: list[int]) -> bool:
+    def _is_complete_output(self, generated_ids: TokenIds) -> bool:
         return self.prefix_matcher.is_complete_output(
             generated_ids=generated_ids,
             encoded_output_candidates=self.encoded_output_candidates,
@@ -101,8 +105,8 @@ class ConstrainedDecoder:
 
     def _force_token(
         self,
-        prefix_ids: list[int],
-        allowed_token_ids: list[int],
+        prefix_ids: TokenIds,
+        allowed_token_ids: AllowedTokenIds,
     ) -> int:
         return self.token_selector.force_token(
             prefix_ids=prefix_ids,
@@ -111,9 +115,9 @@ class ConstrainedDecoder:
 
     def force_json_output(
         self,
-        prefix_input_ids: list[int],
+        prefix_input_ids: TokenIds,
     ) -> str:
-        generated_ids: list[int] = []
+        generated_ids: TokenIds = []
         rolling_prefix = list(prefix_input_ids)
 
         # Token-by-token constrained decoding:

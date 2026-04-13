@@ -2,6 +2,13 @@ import json
 import re
 
 from .models import FunctionDefinition, ParameterDefinition
+from .types import (
+    OutputCandidate,
+    OutputCandidates,
+    ParameterValue,
+    ParameterValues,
+    ParameterValueSpace,
+)
 
 
 class CandidateBuilder:
@@ -20,10 +27,10 @@ class CandidateBuilder:
     def build_base_candidates(
         self,
         available_functions: list[FunctionDefinition],
-    ) -> list[str]:
-        candidates: list[str] = []
+    ) -> OutputCandidates:
+        candidates: OutputCandidates = []
         for function_definition in available_functions:
-            parameters: dict[str, object] = {}
+            parameters: ParameterValues = {}
             for name, definition in function_definition.parameters.items():
                 parameters[name] = self._default_parameter_value(
                     definition.type
@@ -74,7 +81,7 @@ class CandidateBuilder:
         self,
         prompt: str,
         parameter_definition: ParameterDefinition,
-    ) -> list[object]:
+    ) -> list[ParameterValue]:
         if parameter_definition.type == "string":
             return list(self.extract_string_candidates(prompt))
         if parameter_definition.type == "number":
@@ -84,8 +91,8 @@ class CandidateBuilder:
     def materialize_candidate_json(
         self,
         function_name: str,
-        parameters: dict[str, object],
-    ) -> str:
+        parameters: ParameterValues,
+    ) -> OutputCandidate:
         return json.dumps(
             {
                 "name": function_name,
@@ -100,9 +107,9 @@ class CandidateBuilder:
         function_definition: FunctionDefinition,
         prompt: str,
         max_candidates_per_function: int = 16,
-    ) -> list[str]:
+    ) -> OutputCandidates:
         parameter_names = list(function_definition.parameters.keys())
-        value_space: dict[str, list[object]] = {}
+        value_space: ParameterValueSpace = {}
         for name in parameter_names:
             definition = function_definition.parameters[name]
             values = self.parameter_candidates(prompt, definition)
@@ -110,9 +117,9 @@ class CandidateBuilder:
                 values = [self._default_parameter_value(definition.type)]
             value_space[name] = values
 
-        expanded: list[dict[str, object]] = [{}]
+        expanded: list[ParameterValues] = [{}]
         for parameter_name in parameter_names:
-            next_expanded: list[dict[str, object]] = []
+            next_expanded: list[ParameterValues] = []
             for partial in expanded:
                 for value in value_space[parameter_name]:
                     merged = dict(partial)
@@ -122,14 +129,14 @@ class CandidateBuilder:
             expanded = next_expanded[:max_candidates_per_function]
 
         if not expanded:
-            fallback_parameters: dict[str, object] = {}
+            fallback_parameters: ParameterValues = {}
             for name in parameter_names:
                 fallback_parameters[name] = self._default_parameter_value(
                     function_definition.parameters[name].type
                 )
             expanded = [fallback_parameters]
 
-        candidate_texts: list[str] = []
+        candidate_texts: OutputCandidates = []
         seen: set[str] = set()
         for parameters in expanded:
             candidate = self.materialize_candidate_json(
@@ -148,8 +155,8 @@ class CandidateBuilder:
         available_functions: list[FunctionDefinition],
         prompt: str,
         max_candidates_per_function: int = 16,
-    ) -> list[str]:
-        all_candidates: list[str] = []
+    ) -> OutputCandidates:
+        all_candidates: OutputCandidates = []
         for function_definition in available_functions:
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
