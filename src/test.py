@@ -89,10 +89,16 @@ def test() -> None:
         allowed_token_ids: set[int] = set()
         for encoded_function_call in encoded_function_calls:
             prefix_length = len(generated_token_ids)
+            # if the generated output is already longer than this candidate,
+            # it can't be a valid continuation
             if prefix_length >= len(encoded_function_call):
                 continue
+            # if the generated output doesn't match the start of this
+            # candidate, it can't be a valid continuation
             if encoded_function_call[:prefix_length] != generated_token_ids:
                 continue
+            # else this candidate is still valid, so add the next token in this
+            # candidate to the allowed set
             allowed_token_ids.add(encoded_function_call[prefix_length])
 
         if not allowed_token_ids:
