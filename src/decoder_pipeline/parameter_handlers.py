@@ -105,17 +105,36 @@ class StringParameterHandler(ParameterSegmentHandler):
     Handles JSON string values enclosed in double quotes: ``"any text"``.
 
     State keys:
-        started  — True after the opening ``"`` has been consumed.
-        escaped  — True when the previous character was ``\\``.
-        complete — True after the closing ``"`` has been consumed.
+        started        — True after the opening ``"`` has been consumed.
+        escaped        — True when the previous character was ``\\``.
+        complete       — True after the closing ``"`` has been consumed.
+        content_length — Number of non-closing-quote characters consumed
+                         so far (including backslashes in escape sequences).
+
+    Parameters
+    ----------
+    max_length:
+        Maximum number of content characters to accept before the handler
+        starts rejecting everything except the closing ``"``.  This bounds
+        the number of tokens the decoder can spend on a single string
+        value and prevents runaway generation when model logits never
+        prefer the closing quote.
     """
+
+    def __init__(self, max_length: int = 64) -> None:
+        self._max_length = max_length
 
     @property
     def type_name(self) -> str:
         return "string"
 
     def initial_state(self) -> dict[str, Any]:
-        return {"started": False, "escaped": False, "complete": False}
+        return {
+            "started": False,
+            "escaped": False,
+            "complete": False,
+            "content_length": 0,
+        }
 
     def consume_chunk(
         self,
@@ -143,24 +162,35 @@ class StringParameterHandler(ParameterSegmentHandler):
             if s["escaped"]:
                 # The previous character was a backslash; accept any char.
                 s["escaped"] = False
-                index += 1
-                continue
-
-            if char == "\\":
-                s["escaped"] = True
+                s["content_length"] += 1
                 index += 1
                 continue
 
             if char == '"':
                 # Closing double-quote: string is complete.
+                # This is always accepted, even at max_length, so the
+                # decoder can terminate the string.
                 s["complete"] = True
                 index += 1
                 return s, index
+
+            # At max content length only the closing quote (above) is
+            # accepted.  Reject anything else to force the decoder to
+            # pick a closing-quote token on the next step.
+            if s["content_length"] >= self._max_length:
+                return None, start
+
+            if char == "\\":
+                s["escaped"] = True
+                s["content_length"] += 1
+                index += 1
+                continue
 
             # Control characters are not valid inside a JSON string.
             if ord(char) < 0x20:
                 return None, start
 
+            s["content_length"] += 1
             index += 1
 
         return s, index
@@ -169,8 +199,8 @@ class StringParameterHandler(ParameterSegmentHandler):
         return bool(state.get("complete"))
 
     def is_valid_prefix(self, state: dict[str, Any]) -> bool:
-        # Any in-progress string state (not mid-escape-sequence oddity)
-        # is a valid prefix; consume_chunk already rejects invalid chars.
+        # Any in-progress string state is a valid prefix; consume_chunk
+        # already rejects invalid characters and enforces max_length.
         return True
 
 
@@ -186,7 +216,19 @@ class NumberParameterHandler(ParameterSegmentHandler):
     State keys:
         buffer   — digits (and optional sign/dot/exponent) accumulated so far.
         complete — True once a non-number char signals the end of the number.
+
+    Parameters
+    ----------
+    max_digits:
+        Maximum number of number characters to accumulate.  Once the
+        buffer reaches this length AND contains a valid complete number,
+        any additional digit token is rejected so the decoder is forced
+        to pick a non-digit terminator on the next step.  This prevents
+        runaway generation when model logits favour digits indefinitely.
     """
+
+    def __init__(self, max_digits: int = 15) -> None:
+        self._max_digits = max_digits
 
     @property
     def type_name(self) -> str:
@@ -211,6 +253,13 @@ class NumberParameterHandler(ParameterSegmentHandler):
             char = chunk[index]
 
             if char in _NUMBER_CHARS:
+                # At max_digits with a valid buffer: reject digit tokens so
+                # the decoder is forced to pick a non-digit terminator next.
+                if (
+                    len(s["buffer"]) >= self._max_digits
+                    and _NUMBER_COMPLETE_RE.fullmatch(s["buffer"])
+                ):
+                    return None, start
                 s["buffer"] += char
                 index += 1
                 continue
