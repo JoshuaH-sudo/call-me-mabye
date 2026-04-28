@@ -286,7 +286,7 @@ def _build_parameter_candidates(
         parameter_type = parameter_definition["type"]
 
         if parameter_type == "string":
-            possible_values: list[object] = _build_string_candidate_values(prompt)
+            possible_values = _build_string_candidate_values(prompt)
         elif parameter_type == "number":
             possible_values = _build_number_candidate_values(prompt)
         else:
