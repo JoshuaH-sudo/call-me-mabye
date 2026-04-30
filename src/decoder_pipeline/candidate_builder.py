@@ -24,33 +24,10 @@ class CandidateBuilder:
             f"{parameter_type}"
         )
 
-    def build_base_candidates(
-        self,
-        available_functions: list[FunctionDefinition],
-    ) -> OutputCandidates:
-        candidates: OutputCandidates = []
-        for function_definition in available_functions:
-            parameters: ParameterValues = {}
-            for name, definition in function_definition.parameters.items():
-                parameters[name] = self._default_parameter_value(
-                    definition.type
-                )
-
-            candidates.append(
-                json.dumps(
-                    {
-                        "name": function_definition.name,
-                        "parameters": parameters,
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            )
-        return candidates
-
     def extract_string_candidates(self, prompt: str) -> list[str]:
         candidates: list[str] = []
 
+        # Extract quoted strings (both single and double quotes)
         quoted_matches = re.findall(r'"([^"\\]+)"|\'([^\'\\]+)\'', prompt)
         for left, right in quoted_matches:
             value = left if left else right
@@ -58,12 +35,80 @@ class CandidateBuilder:
             if cleaned and cleaned not in candidates:
                 candidates.append(cleaned)
 
-        for token in re.findall(r"[A-Za-z][A-Za-z\-']*", prompt):
-            if token not in candidates:
-                candidates.append(token)
+        # Extract bare words (fallback when no quotes)
+        # Common stopwords to filter out
+        stopwords = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "should",
+            "could",
+            "can",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "all",
+            "each",
+            "every",
+            "both",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "nor",
+            "not",
+            "only",
+            "same",
+            "so",
+            "than",
+            "too",
+            "very",
+            "just",
+            "as",
+            "if",
+        }
 
+        # Extract words using word boundary regex
+        words = re.findall(r"\b\w+(?:['-]\w+)*\b", prompt)
+        for word in words:
+            # Skip stopwords and keep unique candidates
+            if word.lower() not in stopwords and word not in candidates:
+                candidates.append(word)
+
+        # Fallback: if no candidates at all, return empty string
         if not candidates:
             candidates.append("")
+
         return candidates
 
     def extract_number_candidates(
