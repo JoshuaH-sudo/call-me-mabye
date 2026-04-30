@@ -1,16 +1,26 @@
 [
   {
-    "prompt": "What is the sum of 2 and 3?",
-    "name": "fn_get_square_root",
+    "prompt": "say hello to Diana!",
+    "name": "fn_add_numbers",
     "parameters": {
-      "a": 2.0
+      "a": 0.0,
+      "b": 0.0
+    }
+  },
+  {
+    "prompt": "What is the sum of 2 and 3?",
+    "name": "fn_add_numbers",
+    "parameters": {
+      "a": 2.0,
+      "b": 3.0
     }
   },
   {
     "prompt": "What is the sum of 265 and 345?",
-    "name": "fn_get_square_root",
+    "name": "fn_add_numbers",
     "parameters": {
-      "a": 265.0
+      "a": 265.0,
+      "b": 345.0
     }
   },
   {
@@ -29,16 +39,16 @@
   },
   {
     "prompt": "Reverse the string 'hello'",
-    "name": "fn_greet",
+    "name": "fn_reverse_string",
     "parameters": {
-      "name": "hello"
+      "s": "hello"
     }
   },
   {
     "prompt": "Reverse the string 'world'",
-    "name": "fn_greet",
+    "name": "fn_reverse_string",
     "parameters": {
-      "name": "world"
+      "s": "world"
     }
   },
   {
@@ -57,23 +67,28 @@
   },
   {
     "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
-    "name": "fn_greet",
+    "name": "fn_add_numbers",
     "parameters": {
-      "name": "Hello"
+      "a": 34.0,
+      "b": 233.0
     }
   },
   {
     "prompt": "Replace all vowels in 'Programming is fun' with asterisks",
-    "name": "fn_get_square_root",
+    "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "a": 0.0
+      "regex": "Replace",
+      "replacement": "asterisks",
+      "source_string": "Programming is fun"
     }
   },
   {
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
-    "name": "fn_get_square_root",
+    "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "a": 0.0
+      "regex": "cat",
+      "replacement": "dog",
+      "source_string": "cat"
     }
   }
 ]

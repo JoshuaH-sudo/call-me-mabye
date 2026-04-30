@@ -1,4 +1,5 @@
 import json
+import re
 
 from .models import FunctionDefinition, ParameterDefinition
 from .number_parameter_extractor import NumberParameterExtractor
@@ -10,6 +11,81 @@ from .types import (
     ParameterValues,
     ParameterValueSpace,
 )
+
+_STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "should",
+    "could",
+    "can",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "all",
+    "each",
+    "every",
+    "both",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "nor",
+    "not",
+    "only",
+    "same",
+    "so",
+    "than",
+    "too",
+    "very",
+    "just",
+    "as",
+    "if",
+}
+
+
+def _tokenize(text: str) -> set[str]:
+    return {
+        w for w in re.findall(r"\b\w+\b", text.lower()) if w not in _STOPWORDS
+    }
+
+
+def _score_function(fn: FunctionDefinition, prompt_tokens: set[str]) -> int:
+    name_tokens = {
+        p for p in fn.name.lower().split("_") if p not in _STOPWORDS
+    }
+    fn_tokens = _tokenize(fn.description) | name_tokens
+    return len(fn_tokens & prompt_tokens)
 
 
 class CandidateBuilder:
@@ -119,8 +195,30 @@ class CandidateBuilder:
         prompt: str,
         max_candidates_per_function: int = 16,
     ) -> OutputCandidates:
+        prompt_tokens = _tokenize(prompt)
+
+        def has_candidates_for_all_params(fn: FunctionDefinition) -> bool:
+            return all(
+                bool(self.parameter_candidates(prompt, defn))
+                for defn in fn.parameters.values()
+            )
+
+        sorted_fns = sorted(
+            available_functions,
+            key=lambda fn: _score_function(fn, prompt_tokens),
+            reverse=True,
+        )
+        filtered_fns = [
+            fn for fn in sorted_fns if has_candidates_for_all_params(fn)
+        ]
+
+        if not filtered_fns:
+            filtered_fns = sorted_fns[:1]
+
+        top_fn = filtered_fns[:1]
+
         all_candidates: OutputCandidates = []
-        for function_definition in available_functions:
+        for function_definition in top_fn:
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
                     function_definition=function_definition,

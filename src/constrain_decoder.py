@@ -105,6 +105,13 @@ class ConstrainedDecoder:
             available_functions=self.available_functions,
             prompt=prompt,
         )
+        print("========================================")
+        print("Prompt:")
+        print(prompt)
+        print("Generated output candidates:")
+        for candidate in output_candidates:
+            print(candidate)
+        print("========================================")
         encoded_output_candidates: EncodedOutputCandidates = [
             self._encode_text(candidate) for candidate in output_candidates
         ]
