@@ -17,6 +17,7 @@ class NumberParameterExtractor:
 
         Returns:
             A list of numeric candidates ordered by appearance in the prompt.
+            Returns an empty list when no numeric mention is found.
         """
         units: dict[str, int] = {
             "zero": 0,
@@ -204,5 +205,5 @@ class NumberParameterExtractor:
         ordered_values = [float(value) for _, value in mentions]
 
         if not ordered_values:
-            return [0.0]
+            return []
         return ordered_values
