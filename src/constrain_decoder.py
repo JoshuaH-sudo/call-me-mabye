@@ -108,8 +108,6 @@ class ConstrainedDecoder:
         encoded_output_candidates: EncodedOutputCandidates = [
             self._encode_text(candidate) for candidate in output_candidates
         ]
-        for candidate in zip(output_candidates):
-            print(f"Candidate: {candidate}")
 
         generated_ids: TokenIds = []
         rolling_prefix = list(prefix_input_ids)
