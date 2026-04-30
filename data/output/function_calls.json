@@ -68,7 +68,7 @@
     "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "Hello 34 I",
+      "regex": "\\d+",
       "replacement": "NUMBERS",
       "source_string": "Hello 34 I'm 233 years old"
     }
@@ -78,7 +78,7 @@
     "name": "fn_substitute_string_with_regex",
     "parameters": {
       "regex": "[aeiouAEIOU]",
-      "replacement": "asterisks",
+      "replacement": "*",
       "source_string": "Programming is fun"
     }
   },
@@ -88,7 +88,7 @@
     "parameters": {
       "regex": "cat",
       "replacement": "dog",
-      "source_string": "cat"
+      "source_string": "The cat sat on the mat with another cat"
     }
   }
 ]

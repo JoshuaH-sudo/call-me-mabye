@@ -131,7 +131,12 @@ class CandidateBuilder:
         if parameter_name == "regex":
             return list(self.regex_extractor.extract_candidates(prompt))
         if parameter_definition.type == "string":
-            return list(self.string_extractor.extract_candidates(prompt))
+            return list(
+                self.string_extractor.extract_candidates(
+                    prompt,
+                    parameter_name,
+                )
+            )
         if parameter_definition.type == "number":
             return list(self.number_extractor.extract_candidates(prompt))
         return [self._default_parameter_value(parameter_definition.type)]
