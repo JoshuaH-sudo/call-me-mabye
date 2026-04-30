@@ -3,6 +3,7 @@ import re
 
 from .models import FunctionDefinition, ParameterDefinition
 from .number_parameter_extractor import NumberParameterExtractor
+from .regex_parameter_extractor import RegexParameterExtractor
 from .string_parameter_extractor import StringParameterExtractor
 from .types import (
     OutputCandidate,
@@ -85,7 +86,10 @@ def _score_function(fn: FunctionDefinition, prompt_tokens: set[str]) -> int:
         p for p in fn.name.lower().split("_") if p not in _STOPWORDS
     }
     fn_tokens = _tokenize(fn.description) | name_tokens
-    return len(fn_tokens & prompt_tokens)
+    score = len(fn_tokens & prompt_tokens)
+    if {"replace", "substitute"} & prompt_tokens and "substitute" in fn.name:
+        score += 5
+    return score
 
 
 class CandidateBuilder:
@@ -99,6 +103,7 @@ class CandidateBuilder:
         """Initialize the candidate builder with specialized extractors."""
         self.string_extractor = StringParameterExtractor()
         self.number_extractor = NumberParameterExtractor()
+        self.regex_extractor = RegexParameterExtractor()
 
     def _default_parameter_value(self, parameter_type: str) -> object:
         if parameter_type == "string":
@@ -114,13 +119,17 @@ class CandidateBuilder:
         self,
         prompt: str,
         parameter_definition: ParameterDefinition,
+        parameter_name: str = "",
     ) -> list[ParameterValue]:
         """Extract parameter candidates based on parameter type.
 
         Delegates to specialized extractors:
+        - RegexParameterExtractor for parameters named "regex"
         - StringParameterExtractor for string types
         - NumberParameterExtractor for number types
         """
+        if parameter_name == "regex":
+            return list(self.regex_extractor.extract_candidates(prompt))
         if parameter_definition.type == "string":
             return list(self.string_extractor.extract_candidates(prompt))
         if parameter_definition.type == "number":
@@ -151,7 +160,7 @@ class CandidateBuilder:
         value_space: ParameterValueSpace = {}
         for name in parameter_names:
             definition = function_definition.parameters[name]
-            values = self.parameter_candidates(prompt, definition)
+            values = self.parameter_candidates(prompt, definition, name)
             if not values:
                 values = [self._default_parameter_value(definition.type)]
             value_space[name] = values
@@ -199,8 +208,8 @@ class CandidateBuilder:
 
         def has_candidates_for_all_params(fn: FunctionDefinition) -> bool:
             return all(
-                bool(self.parameter_candidates(prompt, defn))
-                for defn in fn.parameters.values()
+                bool(self.parameter_candidates(prompt, defn, name))
+                for name, defn in fn.parameters.items()
             )
 
         sorted_fns = sorted(
