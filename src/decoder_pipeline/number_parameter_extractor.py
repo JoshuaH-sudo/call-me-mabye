@@ -145,6 +145,39 @@ class NumberParameterExtractor:
                 return None
             return sign * (total + current)
 
+        def is_numeric_word(token: str) -> bool:
+            return token in (set(units) | set(tens) | set(scales))
+
+        def split_number_groups(tokens: list[str]) -> list[list[str]]:
+            groups: list[list[str]] = []
+            current: list[str] = []
+
+            def has_scale(group_tokens: list[str]) -> bool:
+                return any(tok in scales for tok in group_tokens)
+
+            for index, token in enumerate(tokens):
+                if token == "and" and current:
+                    next_token = (
+                        tokens[index + 1] if index + 1 < len(tokens) else ""
+                    )
+                    # Keep "and" inside scaled numbers such as
+                    # "one hundred and five".
+                    if has_scale(current):
+                        current.append(token)
+                        continue
+                    # For non-scaled phrases, "and" most often joins two
+                    # separate numbers: "twenty-three and one hundred...".
+                    if is_numeric_word(next_token):
+                        groups.append(current)
+                        current = []
+                        continue
+
+                current.append(token)
+
+            if current:
+                groups.append(current)
+            return groups
+
         mentions: list[tuple[int, int | float]] = []
 
         for match in re.finditer(r"-?\d+(?:\.\d+)?", prompt):
@@ -169,37 +202,41 @@ class NumberParameterExtractor:
                             (split_part, token_start)
                         )
 
-        normalized_word_tokens = [tok for tok, _ in word_tokens_with_positions]
-        token_positions = [pos for _, pos in word_tokens_with_positions]
-
         token_index = 0
-        while token_index < len(normalized_word_tokens):
-            if normalized_word_tokens[token_index] not in valid_word_tokens:
+        while token_index < len(word_tokens_with_positions):
+            token, start_pos = word_tokens_with_positions[token_index]
+            if token not in valid_word_tokens:
                 token_index += 1
                 continue
-            best_end: int | None = None
-            best_value: int | float | None = None
-            for end in range(len(normalized_word_tokens), token_index, -1):
-                token_slice = normalized_word_tokens[token_index:end]
-                if any(tok not in valid_word_tokens for tok in token_slice):
-                    continue
-                parsed_value = parse_word_number(token_slice)
+
+            end_index = token_index
+            while end_index < len(word_tokens_with_positions):
+                end_token = word_tokens_with_positions[end_index][0]
+                if end_token not in valid_word_tokens:
+                    break
+                end_index += 1
+
+            token_slice = word_tokens_with_positions[token_index:end_index]
+            phrase_tokens = [tok for tok, _ in token_slice]
+            phrase_positions = [pos for _, pos in token_slice]
+
+            cursor = 0
+            for group_tokens in split_number_groups(phrase_tokens):
+                group_len = len(group_tokens)
+                group_start = phrase_positions[cursor]
+                cursor += group_len
+                parsed_value = parse_word_number(group_tokens)
                 if parsed_value is None:
                     continue
                 if (
                     isinstance(parsed_value, float)
                     and parsed_value.is_integer()
                 ):
-                    best_value = int(parsed_value)
+                    mentions.append((group_start, int(parsed_value)))
                 else:
-                    best_value = parsed_value
-                best_end = end
-                break
-            if best_end is None or best_value is None:
-                token_index += 1
-                continue
-            mentions.append((token_positions[token_index], best_value))
-            token_index = best_end
+                    mentions.append((group_start, parsed_value))
+
+            token_index = end_index
 
         mentions.sort(key=lambda item: item[0])
         ordered_values = [float(value) for _, value in mentions]

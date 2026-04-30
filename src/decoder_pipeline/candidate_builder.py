@@ -162,6 +162,54 @@ class CandidateBuilder:
         max_candidates_per_function: int = 16,
     ) -> OutputCandidates:
         parameter_names = list(function_definition.parameters.keys())
+
+        # For functions with only numeric parameters, keep values aligned to
+        # prompt order instead of building a full cross-product.
+        if parameter_names and all(
+            function_definition.parameters[name].type == "number"
+            for name in parameter_names
+        ):
+            numeric_values = self.number_extractor.extract_candidates(prompt)
+            if numeric_values:
+                aligned: list[ParameterValues] = []
+                width = len(parameter_names)
+                if len(numeric_values) >= width:
+                    max_windows = len(numeric_values) - width + 1
+                    for window_start in range(max_windows):
+                        params: ParameterValues = {}
+                        for offset, parameter_name in enumerate(
+                            parameter_names
+                        ):
+                            params[parameter_name] = numeric_values[
+                                window_start + offset
+                            ]
+                        aligned.append(params)
+                else:
+                    params = {}
+                    for offset, parameter_name in enumerate(parameter_names):
+                        if offset < len(numeric_values):
+                            params[parameter_name] = numeric_values[offset]
+                        else:
+                            params[parameter_name] = (
+                                self._default_parameter_value("number")
+                            )
+                    aligned.append(params)
+
+                candidate_texts: OutputCandidates = []
+                seen: set[str] = set()
+                for parameters in aligned[:max_candidates_per_function]:
+                    candidate = self.materialize_candidate_json(
+                        function_name=function_definition.name,
+                        parameters=parameters,
+                    )
+                    if candidate in seen:
+                        continue
+                    seen.add(candidate)
+                    candidate_texts.append(candidate)
+
+                if candidate_texts:
+                    return candidate_texts
+
         value_space: ParameterValueSpace = {}
         for name in parameter_names:
             definition = function_definition.parameters[name]
