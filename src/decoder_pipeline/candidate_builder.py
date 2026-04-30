@@ -195,20 +195,20 @@ class CandidateBuilder:
                             )
                     aligned.append(params)
 
-                candidate_texts: OutputCandidates = []
-                seen: set[str] = set()
+                aligned_candidate_texts: OutputCandidates = []
+                aligned_seen: set[str] = set()
                 for parameters in aligned[:max_candidates_per_function]:
                     candidate = self.materialize_candidate_json(
                         function_name=function_definition.name,
                         parameters=parameters,
                     )
-                    if candidate in seen:
+                    if candidate in aligned_seen:
                         continue
-                    seen.add(candidate)
-                    candidate_texts.append(candidate)
+                    aligned_seen.add(candidate)
+                    aligned_candidate_texts.append(candidate)
 
-                if candidate_texts:
-                    return candidate_texts
+                if aligned_candidate_texts:
+                    return aligned_candidate_texts
 
         value_space: ParameterValueSpace = {}
         for name in parameter_names:

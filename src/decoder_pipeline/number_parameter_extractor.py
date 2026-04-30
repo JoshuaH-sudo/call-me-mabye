@@ -81,7 +81,7 @@ class NumberParameterExtractor:
 
             for part in COMPOUND_NUMBER_PARTS:
                 if remaining.startswith(part):
-                    tail = solve(remaining[len(part) :])
+                    tail = solve(remaining[len(part):])
                     if tail is not None:
                         memo[remaining] = [part] + tail
                         return memo[remaining]
@@ -163,7 +163,7 @@ class NumberParameterExtractor:
         if "point" in tokens:
             point_index = tokens.index("point")
             integer_tokens = tokens[:point_index]
-            fractional_tokens = tokens[point_index + 1 :]
+            fractional_tokens = tokens[point_index + 1:]
             if not fractional_tokens:
                 return None
 

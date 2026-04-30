@@ -25,7 +25,8 @@
     // Optional: Default formatter (Black is a common choice)
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true,
+        // Keep formatting explicit so auto-save cannot rewrite code unexpectedly.
+        "editor.formatOnSave": false,
         "files.insertFinalNewline": true,
         "editor.rulers": [79],
         "editor.tabSize": 4,
