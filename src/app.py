@@ -91,7 +91,9 @@ def main() -> int:
 
     # --- Step 3: initialise model and decoder --------------------------------
     llm = Small_LLM_Model()
-    decoder = ConstrainedDecoder(available_functions=functions, llm=llm)
+    decoder = ConstrainedDecoder(
+        available_functions=functions, llm=llm, debug=paths.debug
+    )
 
     # --- Step 4: decode each prompt ------------------------------------------
     #

@@ -28,3 +28,4 @@ class AppPaths(BaseModel):
     function_definitions_file: Path
     prompts_file: Path
     output_file: Path
+    debug: bool = False

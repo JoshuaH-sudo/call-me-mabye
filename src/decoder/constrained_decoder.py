@@ -73,11 +73,13 @@ class ConstrainedDecoder:
     candidate_builder: CandidateBuilder
     prefix_matcher: PrefixMatcher
     token_selector: TokenSelector
+    debug: bool
 
     def __init__(
         self,
         available_functions: list[FunctionDefinition],
         llm: Small_LLM_Model,
+        debug: bool = False,
     ) -> None:
         """Initialise the decoder with a function schema list and an LLM.
 
@@ -85,9 +87,12 @@ class ConstrainedDecoder:
             available_functions: Validated function definitions to decode
                 against.  Must contain at least one definition.
             llm: An initialised :class:`~llm_sdk.Small_LLM_Model` instance.
+            debug: When ``True``, print candidate lists and per-step decoding
+                details to stdout.  Defaults to ``False``.
         """
         self.llm = llm
         self.available_functions = available_functions
+        self.debug = debug
         self.candidate_builder = CandidateBuilder()
         self.prefix_matcher = PrefixMatcher()
         self.token_selector = TokenSelector(llm=llm)
@@ -200,13 +205,14 @@ class ConstrainedDecoder:
             available_functions=self.available_functions,
             prompt=prompt,
         )
-        print("========================================")
-        print("Prompt:")
-        print(prompt)
-        print("Generated output candidates:")
-        for candidate in output_candidates:
-            print(candidate)
-        print("========================================")
+        if self.debug:
+            print("========================================")
+            print("Prompt:")
+            print(prompt)
+            print("Generated output candidates:")
+            for candidate in output_candidates:
+                print(candidate)
+            print("========================================")
 
         # Step 2: encode every candidate string into token IDs once upfront
         # so the inner loop only does integer-list comparisons.

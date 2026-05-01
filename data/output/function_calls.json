@@ -15,6 +15,14 @@
     }
   },
   {
+    "prompt": "What is 10 minus by 40?",
+    "name": "fn_minus_numbers",
+    "parameters": {
+      "a": 10.0,
+      "b": 40.0
+    }
+  },
+  {
     "prompt": "What is the sum of 265 and 345?",
     "name": "fn_add_numbers",
     "parameters": {
