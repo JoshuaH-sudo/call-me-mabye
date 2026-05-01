@@ -152,8 +152,9 @@ def main() -> int:
             # valid function-call JSON candidates.
             encoded_prompt = llm.encode(prompt_case.prompt)
             prompt_ids = cast(list[int], encoded_prompt[0].tolist())
-            output = decoder.force_json_output(
+            output = decoder.apply_decoder(
                 prefix_input_ids=prompt_ids,
+                prompt=prompt_case.prompt,
             )
             decoded_payload = validate_function_payload(
                 json.loads(output),

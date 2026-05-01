@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import cast
 
 from llm_sdk import Small_LLM_Model
 from .decoder_pipeline import (
@@ -6,7 +6,6 @@ from .decoder_pipeline import (
     CandidateBuilder,
     EncodedOutputCandidates,
     FunctionDefinition,
-    OutputCandidates,
     ParameterDefinition,
     PrefixMatcher,
     ReturnDefinition,
@@ -48,8 +47,6 @@ class ConstrainedDecoder:
     """
 
     available_functions: list[FunctionDefinition]
-    encoded_output_candidates: EncodedOutputCandidates
-    output_candidates: OutputCandidates
     llm: Small_LLM_Model
     candidate_builder: CandidateBuilder
     prefix_matcher: PrefixMatcher
@@ -65,42 +62,28 @@ class ConstrainedDecoder:
         self.candidate_builder = CandidateBuilder()
         self.prefix_matcher = PrefixMatcher()
         self.token_selector = TokenSelector(llm=llm)
-        self.output_candidates = self.candidate_builder.build_base_candidates(
-            available_functions
-        )
-        self.encoded_output_candidates = [
-            self._encode_text(candidate)
-            for candidate in self.output_candidates
-        ]
 
     def _encode_text(self, text: str) -> list[int]:
         return cast(TokenIds, self.llm.encode(text)[0].tolist())
 
-    def rebuild_candidates_for_prompt(self, prompt: str) -> None:
-        self.output_candidates = (
-            self.candidate_builder.build_prompt_candidates(
-                available_functions=self.available_functions,
-                prompt=prompt,
-            )
-        )
-        self.encoded_output_candidates = [
-            self._encode_text(candidate)
-            for candidate in self.output_candidates
-        ]
-
     def _next_allowed_token_ids(
         self,
         generated_ids: TokenIds,
+        encoded_output_candidates: EncodedOutputCandidates,
     ) -> AllowedTokenIds:
         return self.prefix_matcher.next_allowed_token_ids(
             generated_ids=generated_ids,
-            encoded_output_candidates=self.encoded_output_candidates,
+            encoded_output_candidates=encoded_output_candidates,
         )
 
-    def _is_complete_output(self, generated_ids: TokenIds) -> bool:
+    def _is_complete_output(
+        self,
+        generated_ids: TokenIds,
+        encoded_output_candidates: EncodedOutputCandidates,
+    ) -> bool:
         return self.prefix_matcher.is_complete_output(
             generated_ids=generated_ids,
-            encoded_output_candidates=self.encoded_output_candidates,
+            encoded_output_candidates=encoded_output_candidates,
         )
 
     def _force_token(
@@ -113,10 +96,26 @@ class ConstrainedDecoder:
             allowed_token_ids=allowed_token_ids,
         )
 
-    def force_json_output(
+    def apply_decoder(
         self,
         prefix_input_ids: TokenIds,
+        prompt: str,
     ) -> str:
+        output_candidates = self.candidate_builder.build_prompt_candidates(
+            available_functions=self.available_functions,
+            prompt=prompt,
+        )
+        print("========================================")
+        print("Prompt:")
+        print(prompt)
+        print("Generated output candidates:")
+        for candidate in output_candidates:
+            print(candidate)
+        print("========================================")
+        encoded_output_candidates: EncodedOutputCandidates = [
+            self._encode_text(candidate) for candidate in output_candidates
+        ]
+
         generated_ids: TokenIds = []
         rolling_prefix = list(prefix_input_ids)
 
@@ -134,8 +133,12 @@ class ConstrainedDecoder:
         # The loop stops only when generated_ids exactly equals one full
         # candidate sequence, so the decoded string is guaranteed to match the
         # precomputed JSON structure.
-        while not self._is_complete_output(generated_ids):
-            allowed_token_ids = self._next_allowed_token_ids(generated_ids)
+        while not self._is_complete_output(
+            generated_ids, encoded_output_candidates
+        ):
+            allowed_token_ids = self._next_allowed_token_ids(
+                generated_ids, encoded_output_candidates
+            )
             selected_token_id = self._force_token(
                 prefix_ids=rolling_prefix,
                 allowed_token_ids=allowed_token_ids,
@@ -144,7 +147,3 @@ class ConstrainedDecoder:
             rolling_prefix.append(selected_token_id)
 
         return self.llm.decode(generated_ids)
-
-    def decode(self, input_ids: Any) -> str:
-        prefix_ids = cast(list[int], input_ids[0].tolist())
-        return self.force_json_output(prefix_ids)
