@@ -2,12 +2,13 @@
 
 The :class:`CandidateBuilder` is responsible for two things:
 
-1. **Function selection** — given a prompt and all available function
-   definitions, score each function by token overlap with the prompt and
-   pick the best-matching one.
-2. **Candidate enumeration** — for the selected function, extract plausible
-   parameter values from the prompt and serialize every valid combination as
-   a compact JSON string that the decoder can treat as a decoding target.
+1. **Candidate enumeration** — for every available function, extract
+   plausible parameter values from the prompt and serialize every valid
+   combination as a compact JSON string that the decoder can treat as a
+   decoding target.
+2. **LLM-driven function selection** — by including candidates from *all*
+   available functions, the constrained decoder's token-level logit scoring
+   (not any heuristic) determines which function is chosen.
 
 Design notes
 ------------
@@ -21,7 +22,6 @@ Design notes
   of numbers mentioned in the prompt.
 """
 import json
-import re
 
 from .models import FunctionDefinition, ParameterDefinition
 from .extractors.number import NumberParameterExtractor
@@ -35,113 +35,15 @@ from .types import (
     ParameterValueSpace,
 )
 
-# Words that carry no semantic signal for function selection.
-_STOPWORDS = {
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "from",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "should",
-    "could",
-    "can",
-    "may",
-    "might",
-    "must",
-    "shall",
-    "all",
-    "each",
-    "every",
-    "both",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "no",
-    "nor",
-    "not",
-    "only",
-    "same",
-    "so",
-    "than",
-    "too",
-    "very",
-    "just",
-    "as",
-    "if",
-}
-
-
-def _tokenize(text: str) -> set[str]:
-    """Lowercase *text*, split on word boundaries, and remove stopwords.
-
-    Returns a set so that callers can do fast intersection tests.
-    """
-    return {
-        w for w in re.findall(r"\b\w+\b", text.lower()) if w not in _STOPWORDS
-    }
-
-
-def _score_function(fn: FunctionDefinition, prompt_tokens: set[str]) -> int:
-    """Return a relevance score for *fn* given the tokenised *prompt_tokens*.
-
-    The score is the number of tokens shared between the prompt and the
-    union of the function's name tokens and description tokens.  A small
-    bonus is added for substitution-related functions when the prompt
-    contains substitution intent words, improving selection accuracy for
-    that common case.
-
-    Args:
-        fn: The function definition to score.
-        prompt_tokens: Pre-tokenised (and stopword-filtered) prompt words.
-
-    Returns:
-        An integer relevance score; higher means a better match.
-    """
-    name_tokens = {
-        p for p in fn.name.lower().split("_") if p not in _STOPWORDS
-    }
-    fn_tokens = _tokenize(fn.description) | name_tokens
-    score = len(fn_tokens & prompt_tokens)
-
-    # Boost substitution functions when the prompt uses "replace" or
-    # "substitute" — these are strong signals that the user wants a
-    # string-substitution function rather than a generic string function.
-    if {"replace", "substitute"} & prompt_tokens and "substitute" in fn.name:
-        score += 5
-    return score
-
 
 class CandidateBuilder:
     """Builds compact JSON function-call candidates from function schemas.
 
-    Coordinates parameter extraction and JSON candidate generation.
+    Coordinates parameter extraction and JSON candidate generation for all
+    available functions.  By generating candidates for every function, the
+    constrained decoder's LLM-driven logit scoring — not any heuristic —
+    determines which function is ultimately selected.
+
     Delegates extraction logic to three specialised extractor classes:
 
     * :class:`~src.decoder.extractors.string.StringParameterExtractor`
@@ -395,60 +297,26 @@ class CandidateBuilder:
         prompt: str,
         max_candidates_per_function: int = 16,
     ) -> OutputCandidates:
-        """Select the best function and return JSON candidates for *prompt*.
+        """Return JSON candidates for *every* available function.
 
-        Selection pipeline
-        ------------------
-        1. Tokenise the prompt (stopwords removed).
-        2. Score every function via :func:`_score_function`.
-        3. Filter out functions for which no parameter candidates can be
-           extracted — they cannot produce usable JSON.
-        4. Fall back to the top-scoring function if all are filtered out.
-        5. Take only the single best-matching function and expand its
-           candidates via :meth:`expand_function_candidates_for_prompt`.
+        Candidates are generated for all functions so that the constrained
+        decoder's token-level logit scoring — not any heuristic — determines
+        which function is selected.  The model naturally assigns higher
+        probability to the token sequence that best matches the prompt, and
+        the prefix-matcher ensures only valid continuations are ever chosen.
 
         Args:
             available_functions: All function definitions to consider.
-            prompt: The raw user prompt.
-            max_candidates_per_function: Passed through to the expansion step.
+            prompt: The raw user prompt used for parameter extraction.
+            max_candidates_per_function: Maximum number of candidate strings
+                per function; passed through to the expansion step.
 
         Returns:
-            A list of compact JSON candidate strings for the selected function.
+            A flat list of compact JSON candidate strings covering all
+            available functions.
         """
-        prompt_tokens = _tokenize(prompt)
-
-        def has_candidates_for_all_params(fn: FunctionDefinition) -> bool:
-            """Return True when every parameter yields at least one value."""
-            return all(
-                bool(self.parameter_candidates(prompt, defn, name))
-                for name, defn in fn.parameters.items()
-            )
-
-        # Rank all functions by relevance to the prompt.
-        sorted_fns = sorted(
-            available_functions,
-            key=lambda fn: _score_function(fn, prompt_tokens),
-            reverse=True,
-        )
-
-        # Keep only functions whose parameters can all be filled from the
-        # prompt; this avoids emitting candidates with blank/default values
-        # when a better-matched function exists.
-        filtered_fns = [
-            fn for fn in sorted_fns if has_candidates_for_all_params(fn)
-        ]
-
-        # If no function survives the filter, fall back to the top-ranked
-        # function (even if some parameters will use defaults) to ensure we
-        # always produce at least one candidate.
-        if not filtered_fns:
-            filtered_fns = sorted_fns[:1]
-
-        # Pick only the single best function to keep the candidate set small.
-        top_fn = filtered_fns[:1]
-
         all_candidates: OutputCandidates = []
-        for function_definition in top_fn:
+        for function_definition in available_functions:
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
                     function_definition=function_definition,
