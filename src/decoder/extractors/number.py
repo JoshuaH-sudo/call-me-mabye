@@ -1,3 +1,17 @@
+"""Numeric parameter extraction from prompt text.
+
+Supports two number representations:
+
+1. **Numeric literals** — any integer or decimal that can be matched by the
+   pattern ``-?\\d+(\\.\\d+)?``, including negative values.
+2. **English word numbers** — phrases such as "twenty-three", "one hundred
+   and five", "negative three point one four", including compound tokens
+   like "twentythree" that the tokeniser may not split.
+
+Both sources are merged and sorted by their character position in the
+original prompt so that the ordering of candidate values mirrors the
+natural reading order of the text.
+"""
 import re
 
 UNITS: dict[str, int] = {
@@ -22,6 +36,7 @@ UNITS: dict[str, int] = {
     "eighteen": 18,
     "nineteen": 19,
 }
+"""English words for the numbers 0–19."""
 
 TENS: dict[str, int] = {
     "twenty": 20,
@@ -33,6 +48,7 @@ TENS: dict[str, int] = {
     "eighty": 80,
     "ninety": 90,
 }
+"""English words for multiples of ten from 20–90."""
 
 SCALES: dict[str, int] = {
     "hundred": 100,
@@ -41,16 +57,27 @@ SCALES: dict[str, int] = {
     "billion": 1_000_000_000,
     "trillion": 1_000_000_000_000,
 }
+"""Scale multipliers used in English number names."""
 
+# Words that indicate a negative sign when they precede a number phrase.
 SIGNED_WORDS = {"minus", "negative"}
+
+# All tokens that are part of a valid English number expression.
 VALID_WORD_TOKENS = (
     set(UNITS) | set(TENS) | set(SCALES) | {"and", "point"} | SIGNED_WORDS
 )
+
+# Tokens that can be parts of a compound number word (e.g. "twentythree").
 COMPOUND_NUMBER_PARTS = set(UNITS) | set(TENS) | set(SCALES)
 
 
 class NumberParameterExtractor:
-    """Extracts number parameter candidates from prompts."""
+    """Extracts numeric parameter candidates from a prompt string.
+
+    Handles both numeric literals (``-7``, ``3.14``) and English word
+    numbers (``"twenty-three"``, ``"one hundred and five"``,
+    ``"negative three point one four"``).
+    """
 
     def _normalize_value(self, value: int | float) -> int | float:
         """Convert integral floats to ints for cleaner intermediate values."""

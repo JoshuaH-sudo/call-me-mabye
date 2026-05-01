@@ -1,3 +1,8 @@
+"""File I/O sub-package.
+
+``loader``  — reads and validates function definitions and prompts from JSON.
+``writer``  — serialises results back to a JSON file on disk.
+"""
 from .loader import DatasetFileLoader, PromptCase
 from .writer import output_results
 
