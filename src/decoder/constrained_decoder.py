@@ -172,6 +172,7 @@ class ConstrainedDecoder:
         self,
         prefix_input_ids: TokenIds,
         prompt: str,
+        enriched_prefix_ids: TokenIds | None = None,
     ) -> str:
         """Run the full constrained decoding loop for one prompt.
 
@@ -191,10 +192,17 @@ class ConstrainedDecoder:
         5. Decode the final token sequence back to a JSON string.
 
         Args:
-            prefix_input_ids: Token IDs of the encoded prompt (used as the
-                initial rolling context for logit queries).
+            prefix_input_ids: Token IDs of the encoded raw prompt (used as
+                the initial rolling context when *enriched_prefix_ids* is
+                not provided).
             prompt: The raw prompt text (used by the candidate builder for
                 function selection and parameter extraction).
+            enriched_prefix_ids: Optional token IDs of an enriched prompt
+                that includes function-schema and structural-hint tokens.
+                When provided, the rolling logit prefix is initialised from
+                these IDs instead of *prefix_input_ids*, giving the model
+                richer context for scoring without affecting candidate
+                building (which always uses the raw *prompt*).
 
         Returns:
             A JSON string of the form ``{"name":"...","parameters":{...}}``
@@ -222,9 +230,15 @@ class ConstrainedDecoder:
 
         # generated_ids accumulates the output tokens one at a time.
         generated_ids: TokenIds = []
-        # rolling_prefix is the full context fed to the model at each step:
-        # it starts as the prompt token IDs and grows by one token per loop.
-        rolling_prefix = list(prefix_input_ids)
+        # rolling_prefix is the full context fed to the model at each step.
+        # When an enriched prefix is available it is used as the starting
+        # context so that schema and structural-hint tokens bias token
+        # selection; otherwise the raw prompt IDs serve as the starting point.
+        rolling_prefix = list(
+            enriched_prefix_ids
+            if enriched_prefix_ids is not None
+            else prefix_input_ids
+        )
 
         # Step 3: token-by-token constrained generation loop.
         #

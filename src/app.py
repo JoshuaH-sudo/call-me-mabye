@@ -25,6 +25,7 @@ from .io.loader import DatasetFileLoader
 from .io.writer import output_results
 from .models.function_call import FunctionCallResult
 from .models.validation import validate_function_payload
+from .prompt.builder import PromptContextBuilder
 
 
 def build_function_index(
@@ -94,6 +95,7 @@ def main() -> int:
     decoder = ConstrainedDecoder(
         available_functions=functions, llm=llm, debug=paths.debug
     )
+    prompt_builder = PromptContextBuilder()
 
     # --- Step 4: decode each prompt ------------------------------------------
     #
@@ -106,10 +108,22 @@ def main() -> int:
     generated_results: list[FunctionCallResult] = []
     try:
         for prompt_case in prompts:
-            # Tokenise the raw prompt so the decoder can use it as the
-            # rolling prefix when querying model logits.
+            # Tokenise the raw prompt so the decoder can use it as a
+            # fallback prefix when querying model logits.
             encoded_prompt = llm.encode(prompt_case.prompt)
             prompt_ids = cast(list[int], encoded_prompt[0].tolist())
+
+            # Build an enriched prompt that prepends function-call schema
+            # tokens and structural hint tags.  The enriched text is encoded
+            # separately so that the decoder can initialise its rolling logit
+            # context from the richer prefix, while candidate building still
+            # operates on the raw prompt text to avoid extracting schema
+            # text as parameter values.
+            enriched_text = prompt_builder.build_enriched_prompt(
+                raw_prompt=prompt_case.prompt,
+                functions=functions,
+            )
+            enriched_ids = cast(list[int], llm.encode(enriched_text)[0].tolist())
 
             # Run constrained decoding: the decoder uses model logits to
             # score token choices but only allows tokens that continue one of
@@ -117,6 +131,7 @@ def main() -> int:
             output = decoder.apply_decoder(
                 prefix_input_ids=prompt_ids,
                 prompt=prompt_case.prompt,
+                enriched_prefix_ids=enriched_ids,
             )
 
             # Validate the decoded JSON against the selected function schema
