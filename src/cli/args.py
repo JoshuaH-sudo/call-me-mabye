@@ -92,9 +92,17 @@ def parse_args(argv: list[str]) -> AppPaths:
         ),
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="print candidate lists and decoding details to stdout",
+    )
+
     args = parser.parse_args(argv)
     return AppPaths(
         function_definitions_file=Path(args.functions_definition),
         prompts_file=Path(args.input),
         output_file=Path(args.output),
+        debug=args.debug,
     )

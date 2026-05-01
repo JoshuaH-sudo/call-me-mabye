@@ -18,7 +18,8 @@ debug: .venv
 	$(PYTHON) -m pdb src \
 		--functions_definition data/input/functions_definition.json \
 		--input data/input/function_calling_tests.json \
-		--output data/output/function_calls.json
+		--output data/output/function_calls.json \
+		--debug
 
 clean:
 	find . \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache -o -name .ruff_cache \) -type d -prune -exec rm -rf {} +
