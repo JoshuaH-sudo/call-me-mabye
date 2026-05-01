@@ -6,7 +6,7 @@ The :class:`CandidateBuilder` is responsible for two things:
    definitions, score each function by token overlap with the prompt and
    pick the best-matching one.
 2. **Candidate enumeration** — for the selected function, extract plausible
-   parameter values from the prompt and serialise every valid combination as
+   parameter values from the prompt and serialize every valid combination as
    a compact JSON string that the decoder can treat as a decoding target.
 
 Design notes
@@ -225,7 +225,7 @@ class CandidateBuilder:
         function_name: str,
         parameters: ParameterValues,
     ) -> OutputCandidate:
-        """Serialise a function name + parameter map to a compact JSON string.
+        """Serialize a function name + parameter map to a compact JSON string.
 
         Keys are sorted alphabetically to ensure a deterministic byte
         sequence regardless of the insertion order of *parameters*.
@@ -319,7 +319,7 @@ class CandidateBuilder:
                             )
                     aligned.append(params)
 
-                # Deduplicate and serialise the aligned parameter maps.
+                # Deduplicate and serialize the aligned parameter maps.
                 aligned_candidate_texts: OutputCandidates = []
                 aligned_seen: set[str] = set()
                 for parameters in aligned[:max_candidates_per_function]:
@@ -374,7 +374,7 @@ class CandidateBuilder:
                 )
             expanded = [fallback_parameters]
 
-        # Serialise and deduplicate.
+        # Serialize and deduplicate.
         candidate_texts: OutputCandidates = []
         seen: set[str] = set()
         for parameters in expanded:

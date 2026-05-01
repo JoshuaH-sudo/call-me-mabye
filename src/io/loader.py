@@ -48,7 +48,7 @@ class DatasetFileLoader(BaseModel):
             path: Absolute or relative path to the JSON file.
 
         Returns:
-            The deserialised Python object (list, dict, etc.).
+            The deserialized Python object (list, dict, etc.).
 
         Raises:
             RuntimeError: On missing file, malformed JSON, or any OS-level

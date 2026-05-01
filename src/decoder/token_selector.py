@@ -2,7 +2,7 @@
 
 :class:`TokenSelector` wraps the model's logit API and implements the
 core constraint-enforcement step: given a set of *allowed* token IDs, it
-zeroes out the logits for every other token and returns the ID with the
+zeroes out the logits for every disallowed token and returns the ID with the
 highest remaining score.
 
 This guarantees that the model's probability mass flows entirely to tokens

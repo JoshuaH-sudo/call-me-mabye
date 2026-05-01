@@ -14,7 +14,7 @@ def output_results(
     output_file: Path,
     results: list[FunctionCallResult],
 ) -> None:
-    """Serialise *results* to a JSON file at *output_file*.
+    """Serialize *results* to a JSON file at *output_file*.
 
     Creates any missing parent directories before writing.  The file is
     UTF-8 encoded, indented with two spaces, and terminated with a newline
@@ -22,7 +22,7 @@ def output_results(
 
     Args:
         output_file: Destination path.  The file is created or overwritten.
-        results: List of function-call results to serialise.
+        results: List of function-call results to serialize.
 
     Raises:
         RuntimeError: On any OS-level write failure (permissions, full disk,

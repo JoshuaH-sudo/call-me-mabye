@@ -27,7 +27,7 @@ def is_valid_parameter_value(
 
     * ``"string"``  → must be a :class:`str`.
     * ``"number"``  → must be an :class:`int` or :class:`float`, but **not**
-      a :class:`bool` (JSON booleans deserialise as Python bools which are a
+      a :class:`bool` (JSON booleans deserialize as Python bools which are a
       subclass of ``int``, so the explicit exclusion is necessary).
 
     Args:
