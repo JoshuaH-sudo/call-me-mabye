@@ -16,7 +16,7 @@ Given a prompt like `"What is the sum of 40 and 2?"`, the system does **not** an
 }
 ```
 
-The key technical challenge — and the core learning goal — is achieving near-perfect reliability with a tiny model. The solution is **constrained decoding**: at every token-generation step the model's logit vector is masked so that only tokens that continue a valid JSON function-call candidate survive. This guarantees 100 % parseable, schema-compliant output regardless of the model's raw generation tendencies.
+The key technical challenge — and the core learning goal — is achieving near-perfect reliability with a tiny model. The solution is **constrained decoding**: at every token-generation step the model's logit vector is masked so that only tokens that continue a valid JSON function-call candidate survive. This guarantees 100% parseable, schema-compliant output regardless of the model's raw generation tendencies.
 
 ## Instructions
 
@@ -128,7 +128,7 @@ Rather than using a heuristic (word overlap, keyword matching) to pre-select one
 
 On a typical CPU run with Qwen/Qwen3-0.6B:
 
-- **JSON validity**: 100 % — every output is parseable and schema-compliant by construction.
+- **JSON validity**: 100% — every output is parseable and schema-compliant by construction.
 - **Function selection accuracy**: Near-perfect for unambiguous prompts; the LLM's logit scoring over all candidate prefixes is a strong signal.
 - **Processing speed**: Roughly 5–30 seconds per prompt on CPU depending on candidate count and sequence length. The full default test set completes well within the 5-minute target.
 
