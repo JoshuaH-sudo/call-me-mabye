@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by JoshuaH-sudo.*
+*This project has been created as part of the 42 curriculum by jhoban.*
 
 # call-me-maybe
 
