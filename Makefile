@@ -15,7 +15,7 @@ run: .venv
 		--output data/output/function_calls.json
 
 debug: .venv
-	$(PYTHON) -m pdb src \
+	$(PYTHON) -m pdb -m src \
 		--functions_definition data/input/functions_definition.json \
 		--input data/input/function_calling_tests.json \
 		--output data/output/function_calls.json \
