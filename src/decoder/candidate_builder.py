@@ -2,9 +2,9 @@ import json
 import re
 
 from .models import FunctionDefinition, ParameterDefinition
-from .number_parameter_extractor import NumberParameterExtractor
-from .regex_parameter_extractor import RegexParameterExtractor
-from .string_parameter_extractor import StringParameterExtractor
+from .extractors.number import NumberParameterExtractor
+from .extractors.regex import RegexParameterExtractor
+from .extractors.string import StringParameterExtractor
 from .types import (
     OutputCandidate,
     OutputCandidates,

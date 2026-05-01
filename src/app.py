@@ -1,35 +1,16 @@
 import json
 import sys
-from pathlib import Path
 from typing import cast
 
 from llm_sdk import Small_LLM_Model
-from pydantic import BaseModel, ConfigDict
-from .constrain_decoder import ConstrainedDecoder, FunctionDefinition
-from .data_loader import DatasetFileLoader
 
-
-class DatasetSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    function_count: int
-    prompt_count: int
-    average_prompt_length: float
-
-
-class FunctionCallResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    prompt: str
-    name: str
-    parameters: dict[str, object]
-
-
-class FunctionCallPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    parameters: dict[str, object]
+from .cli.args import parse_args
+from .decoder.models import FunctionDefinition
+from .decoder.constrained_decoder import ConstrainedDecoder
+from .io.loader import DatasetFileLoader
+from .io.writer import output_results
+from .models.function_call import FunctionCallResult
+from .models.validation import validate_function_payload
 
 
 def build_function_index(
@@ -46,82 +27,14 @@ def build_function_index(
     return function_index
 
 
-def is_valid_parameter_value(
-    parameter_type: str,
-    value: object,
-) -> bool:
-    if parameter_type == "string":
-        return isinstance(value, str)
-    if parameter_type == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    raise RuntimeError(f"unsupported parameter type: {parameter_type}")
-
-
-def validate_function_payload(
-    payload: object,
-    function_index: dict[str, FunctionDefinition],
-) -> FunctionCallPayload:
-    validated_payload = FunctionCallPayload.model_validate(payload)
-
-    function_definition = function_index.get(validated_payload.name)
-    if function_definition is None:
-        raise RuntimeError(
-            "decoder selected an unknown function name: "
-            f"{validated_payload.name}"
-        )
-
-    expected_parameter_names = set(function_definition.parameters)
-    actual_parameter_names = set(validated_payload.parameters)
-    if actual_parameter_names != expected_parameter_names:
-        missing_names = sorted(
-            expected_parameter_names - actual_parameter_names
-        )
-        extra_names = sorted(actual_parameter_names - expected_parameter_names)
-        raise RuntimeError(
-            "decoded parameters do not match function schema for "
-            f"{validated_payload.name}: missing={missing_names}, "
-            f"extra={extra_names}"
-        )
-
-    for (
-        parameter_name,
-        parameter_definition,
-    ) in function_definition.parameters.items():
-        value = validated_payload.parameters[parameter_name]
-        if not is_valid_parameter_value(parameter_definition.type, value):
-            raise RuntimeError(
-                "decoded parameter has the wrong type for "
-                f"{validated_payload.name}.{parameter_name}: expected "
-                f"{parameter_definition.type}, got {type(value).__name__}"
-            )
-
-    return validated_payload
-
-
-def output_results(
-    output_file: Path,
-    results: list[FunctionCallResult],
-) -> None:
-    try:
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        with output_file.open("w", encoding="utf-8") as handle:
-            json.dump(
-                [item.model_dump(mode="json") for item in results],
-                handle,
-                ensure_ascii=False,
-                indent=2,
-            )
-            handle.write("\n")
-    except OSError as exc:
-        raise RuntimeError(f"unable to write output file {output_file}: {exc}")
-
-
 def main() -> int:
     try:
-        loader = DatasetFileLoader.from_argv(sys.argv[1:])
+        paths = parse_args(sys.argv[1:])
     except RuntimeError as exc:
         print(f"Error: {exc}")
         return 1
+
+    loader = DatasetFileLoader(paths=paths)
 
     try:
         functions = loader.load_functions()
@@ -175,7 +88,7 @@ def main() -> int:
         return 1
 
     try:
-        output_results(loader.paths.output_file, generated_results)
+        output_results(paths.output_file, generated_results)
     except RuntimeError as exc:
         print(f"Error: {exc}")
         return 1
