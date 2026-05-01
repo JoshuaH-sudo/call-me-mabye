@@ -1,5 +1,23 @@
+"""String parameter extraction from prompt text.
+
+Provides :class:`StringParameterExtractor`, which collects string candidates
+in the following priority order:
+
+1. **Named-parameter shortcuts** — ``"replacement"`` and ``"source_string"``
+   parameters use targeted extraction rules that look at specific prompt
+   patterns (e.g. "replace … with X").
+2. **Quoted strings** — content inside single or double quotes is preferred
+   because it is the most explicit signal in the prompt.
+3. **Bare content words** — all non-stopword tokens from the prompt are added
+   as lower-priority candidates.
+4. **Empty string fallback** — if nothing else is found, ``""`` is returned
+   to ensure the candidate list is never empty.
+"""
 import re
 
+# Maps verbose symbol descriptions (as they might appear in a prompt) to
+# the corresponding single-character symbol.  Used when extracting the
+# "replacement" parameter so that "replace with asterisk" yields "*".
 SYMBOL_ALIASES: dict[str, str] = {
     "asterisk": "*",
     "asterisks": "*",
@@ -49,9 +67,17 @@ SYMBOL_ALIASES: dict[str, str] = {
 
 
 class StringParameterExtractor:
-    """Extracts string parameter candidates from prompts."""
+    """Extracts string parameter candidates from a user prompt."""
 
     def _extract_quoted_strings(self, prompt: str) -> list[str]:
+        """Return non-empty strings found inside single or double quotes.
+
+        Args:
+            prompt: The raw user prompt.
+
+        Returns:
+            A deduplicated list of quoted contents in appearance order.
+        """
         quoted: list[str] = []
         quoted_matches = re.findall(r'"([^"\\]+)"|\'([^\'\\]+)\'', prompt)
         for left, right in quoted_matches:
@@ -62,6 +88,21 @@ class StringParameterExtractor:
         return quoted
 
     def _extract_replacement_candidates(self, prompt: str) -> list[str]:
+        """Extract replacement-target candidates from a substitution prompt.
+
+        Looks for the pattern *"with X (in|on|for|…)"* and resolves ``X`` to:
+        - A symbol character if ``X`` matches a :data:`SYMBOL_ALIASES` entry
+          (e.g. "asterisk" → ``"*"``).
+        - The raw trimmed text of ``X`` otherwise.
+
+        Both the symbol and the raw text are returned when they differ.
+
+        Args:
+            prompt: The raw user prompt.
+
+        Returns:
+            A list of 0–2 candidate strings ordered by specificity.
+        """
         candidates: list[str] = []
         with_match = re.search(
             (
@@ -79,6 +120,7 @@ class StringParameterExtractor:
                 or with_match.group(3)
             )
             value = raw.strip()
+            # Normalise whitespace before checking the alias table.
             lowered = re.sub(r"\s+", " ", value.lower()).strip()
             symbol = SYMBOL_ALIASES.get(lowered)
             if symbol is not None:
@@ -88,6 +130,19 @@ class StringParameterExtractor:
         return candidates
 
     def _extract_source_string_candidates(self, prompt: str) -> list[str]:
+        """Extract the most likely source-string candidate.
+
+        For a ``source_string`` parameter the longest quoted string in the
+        prompt is the strongest signal (it is most likely the full input to
+        be processed rather than a short keyword).
+
+        Args:
+            prompt: The raw user prompt.
+
+        Returns:
+            A single-element list containing the longest quoted string, or
+            an empty list if no quoted strings are found.
+        """
         quoted = self._extract_quoted_strings(prompt)
         if not quoted:
             return []
@@ -99,33 +154,39 @@ class StringParameterExtractor:
         prompt: str,
         parameter_name: str = "",
     ) -> list[str]:
-        """Extract string candidates from quoted strings and bare words.
+        """Extract string candidates from a prompt in priority order.
 
-        Priority:
-        1. Extract quoted strings (single and double quotes)
-        2. Extract bare words (filtered by stopwords)
-        3. Fallback to empty string if nothing found
+        Priority
+        --------
+        1. Named-parameter shortcuts (``"replacement"`` and
+           ``"source_string"`` use dedicated extraction helpers).
+        2. Quoted strings (single and double quotes).
+        3. Bare content words (stopwords excluded).
+        4. Empty string ``""`` if nothing else was found.
 
         Args:
             prompt: The user prompt to extract candidates from.
+            parameter_name: The name of the parameter being extracted.
+                Enables name-specific extraction logic when provided.
 
         Returns:
-            A list of string candidates ordered by priority.
+            A deduplicated list of string candidates in priority order.
         """
         candidates: list[str] = []
 
+        # Step 1: name-specific high-priority extraction.
         if parameter_name == "replacement":
             candidates.extend(self._extract_replacement_candidates(prompt))
         elif parameter_name == "source_string":
             candidates.extend(self._extract_source_string_candidates(prompt))
 
-        # Extract quoted strings (both single and double quotes)
+        # Step 2: quoted strings (both single and double quotes).
         for quoted in self._extract_quoted_strings(prompt):
             if quoted not in candidates:
                 candidates.append(quoted)
 
-        # Extract bare words (fallback when no quotes)
-        # Common stopwords to filter out
+        # Step 3: bare content words — common stopwords are removed so that
+        # function/parameter names and meaningful nouns remain.
         stopwords = {
             "the",
             "a",
@@ -187,14 +248,14 @@ class StringParameterExtractor:
             "if",
         }
 
-        # Extract words using word boundary regex
+        # Match whole words, preserving contractions and hyphenated forms.
         words = re.findall(r"\b\w+(?:['-]\w+)*\b", prompt)
         for word in words:
-            # Skip stopwords and keep unique candidates
             if word.lower() not in stopwords and word not in candidates:
                 candidates.append(word)
 
-        # Fallback: if no candidates at all, return empty string
+        # Step 4: final fallback — guarantee at least one candidate so that
+        # the decoder always has a valid JSON string to constrain against.
         if not candidates:
             candidates.append("")
 

@@ -1,40 +1,50 @@
+"""Top-level orchestration for the function-calling pipeline.
+
+Wires together the CLI argument parser, dataset loader, constrained decoder,
+and output writer.  ``main()`` is the single entry point; it returns an
+integer exit code so that ``__main__.py`` can forward it to the OS.
+
+High-level data flow
+--------------------
+1. ``parse_args``          — resolve file paths from argv
+2. ``DatasetFileLoader``   — read function definitions and prompts from disk
+3. ``ConstrainedDecoder``  — for each prompt, run token-level constrained
+                            decoding and emit a validated JSON function-call
+4. ``output_results``      — write the list of results to the output file
+"""
 import json
 import sys
-from pathlib import Path
 from typing import cast
 
 from llm_sdk import Small_LLM_Model
-from pydantic import BaseModel, ConfigDict
-from .constrain_decoder import ConstrainedDecoder, FunctionDefinition
-from .data_loader import DatasetFileLoader
 
-
-class DatasetSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    function_count: int
-    prompt_count: int
-    average_prompt_length: float
-
-
-class FunctionCallResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    prompt: str
-    name: str
-    parameters: dict[str, object]
-
-
-class FunctionCallPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    parameters: dict[str, object]
+from .cli.args import parse_args
+from .decoder.models import FunctionDefinition
+from .decoder.constrained_decoder import ConstrainedDecoder
+from .io.loader import DatasetFileLoader
+from .io.writer import output_results
+from .models.function_call import FunctionCallResult
+from .models.validation import validate_function_payload
 
 
 def build_function_index(
     functions: list[FunctionDefinition],
 ) -> dict[str, FunctionDefinition]:
+    """Build a name-keyed lookup table from a list of function definitions.
+
+    The index is used during validation to quickly retrieve the schema for
+    whichever function the decoder selected.
+
+    Args:
+        functions: Validated list of function definitions loaded from disk.
+
+    Returns:
+        A dictionary mapping each function name to its definition.
+
+    Raises:
+        RuntimeError: If two definitions share the same name, which would make
+            the index ambiguous.
+    """
     function_index: dict[str, FunctionDefinition] = {}
     for function_definition in functions:
         if function_definition.name in function_index:
@@ -46,124 +56,74 @@ def build_function_index(
     return function_index
 
 
-def is_valid_parameter_value(
-    parameter_type: str,
-    value: object,
-) -> bool:
-    if parameter_type == "string":
-        return isinstance(value, str)
-    if parameter_type == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    raise RuntimeError(f"unsupported parameter type: {parameter_type}")
-
-
-def validate_function_payload(
-    payload: object,
-    function_index: dict[str, FunctionDefinition],
-) -> FunctionCallPayload:
-    validated_payload = FunctionCallPayload.model_validate(payload)
-
-    function_definition = function_index.get(validated_payload.name)
-    if function_definition is None:
-        raise RuntimeError(
-            "decoder selected an unknown function name: "
-            f"{validated_payload.name}"
-        )
-
-    expected_parameter_names = set(function_definition.parameters)
-    actual_parameter_names = set(validated_payload.parameters)
-    if actual_parameter_names != expected_parameter_names:
-        missing_names = sorted(
-            expected_parameter_names - actual_parameter_names
-        )
-        extra_names = sorted(actual_parameter_names - expected_parameter_names)
-        raise RuntimeError(
-            "decoded parameters do not match function schema for "
-            f"{validated_payload.name}: missing={missing_names}, "
-            f"extra={extra_names}"
-        )
-
-    for (
-        parameter_name,
-        parameter_definition,
-    ) in function_definition.parameters.items():
-        value = validated_payload.parameters[parameter_name]
-        if not is_valid_parameter_value(parameter_definition.type, value):
-            raise RuntimeError(
-                "decoded parameter has the wrong type for "
-                f"{validated_payload.name}.{parameter_name}: expected "
-                f"{parameter_definition.type}, got {type(value).__name__}"
-            )
-
-    return validated_payload
-
-
-def output_results(
-    output_file: Path,
-    results: list[FunctionCallResult],
-) -> None:
-    try:
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        with output_file.open("w", encoding="utf-8") as handle:
-            json.dump(
-                [item.model_dump(mode="json") for item in results],
-                handle,
-                ensure_ascii=False,
-                indent=2,
-            )
-            handle.write("\n")
-    except OSError as exc:
-        raise RuntimeError(f"unable to write output file {output_file}: {exc}")
-
-
 def main() -> int:
+    """Run the full function-calling pipeline and return an OS exit code.
+
+    Steps
+    -----
+    1. Parse CLI arguments to obtain file paths.
+    2. Load function definitions and test prompts from disk.
+    3. Instantiate the LLM and the constrained decoder.
+    4. For every prompt, run constrained decoding and validate the result.
+    5. Write all results to the output JSON file.
+
+    Returns:
+        0 on success, 1 on any recoverable error (printed to stdout).
+    """
+    # --- Step 1: parse CLI paths -------------------------------------------
     try:
-        loader = DatasetFileLoader.from_argv(sys.argv[1:])
+        paths = parse_args(sys.argv[1:])
     except RuntimeError as exc:
         print(f"Error: {exc}")
         return 1
 
+    loader = DatasetFileLoader(paths=paths)
+
+    # --- Step 2: load dataset files from disk --------------------------------
     try:
         functions = loader.load_functions()
         prompts = loader.load_prompts()
+        # Build the name → definition index once so per-prompt lookup is O(1).
         function_index = build_function_index(functions)
     except RuntimeError as exc:
         print(f"Error: {exc}")
         return 1
 
+    # --- Step 3: initialise model and decoder --------------------------------
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(available_functions=functions, llm=llm)
 
-    # First milestone: emit schema-shaped JSON strings chosen under token
-    # constraints. Parameter values are placeholder defaults.
+    # --- Step 4: decode each prompt ------------------------------------------
     #
-    # End-to-end output assembly:
-    # prompt text
-    #   -> model prompt ids
-    #   -> constrained decoder emits JSON like:
-    #      {"name":"...","parameters":{...}}
-    #   -> app wraps it into the final result object:
-    #      {"prompt":"original prompt","name":"...","parameters":{...}}
+    # End-to-end output assembly per prompt:
+    #   prompt text
+    #     -> tokenizer  -> prompt_ids (list[int])
+    #     -> decoder    -> JSON string e.g. {"name":"...","parameters":{...}}
+    #     -> validator  -> FunctionCallPayload (schema-checked)
+    #     -> result     -> FunctionCallResult  (adds back the original prompt)
     generated_results: list[FunctionCallResult] = []
     try:
         for prompt_case in prompts:
-            # Function selection is driven by the model logits from the raw
-            # user prompt while constrained decoding limits the output to the
-            # valid function-call JSON candidates.
+            # Tokenise the raw prompt so the decoder can use it as the
+            # rolling prefix when querying model logits.
             encoded_prompt = llm.encode(prompt_case.prompt)
             prompt_ids = cast(list[int], encoded_prompt[0].tolist())
+
+            # Run constrained decoding: the decoder uses model logits to
+            # score token choices but only allows tokens that continue one of
+            # the precomputed JSON candidates.
             output = decoder.apply_decoder(
                 prefix_input_ids=prompt_ids,
                 prompt=prompt_case.prompt,
             )
+
+            # Validate the decoded JSON against the selected function schema
+            # before accepting it as a result.
             decoded_payload = validate_function_payload(
                 json.loads(output),
                 function_index,
             )
             generated_results.append(
-                # The decoder enforces the inner function-call payload and the
-                # app validates it against the selected function schema before
-                # attaching the original prompt.
                 FunctionCallResult(
                     prompt=prompt_case.prompt,
                     name=decoded_payload.name,
@@ -174,8 +134,9 @@ def main() -> int:
         print(f"Error: {exc}")
         return 1
 
+    # --- Step 5: write output ------------------------------------------------
     try:
-        output_results(loader.paths.output_file, generated_results)
+        output_results(paths.output_file, generated_results)
     except RuntimeError as exc:
         print(f"Error: {exc}")
         return 1
