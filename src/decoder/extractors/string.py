@@ -6,11 +6,15 @@ in the following priority order:
 1. **Named-parameter shortcuts** — ``"replacement"`` and ``"source_string"``
    parameters use targeted extraction rules that look at specific prompt
    patterns (e.g. "replace … with X").
-2. **Quoted strings** — content inside single or double quotes is preferred
+2. **Proper-noun candidates** — for ``"name"`` parameters, mid-sentence
+   capitalised words and words following prepositions like "to"/"for" are
+   extracted as high-priority candidates.
+3. **Quoted strings** — content inside single or double quotes is preferred
    because it is the most explicit signal in the prompt.
-3. **Bare content words** — all non-stopword tokens from the prompt are added
-   as lower-priority candidates.
-4. **Empty string fallback** — if nothing else is found, ``""`` is returned
+4. **Bare content words** — all non-stopword tokens from the prompt are added
+   as lower-priority candidates.  Structural/imperative words (e.g. "Greet",
+   "Reverse") and tokens derived from the active function name are excluded.
+5. **Empty string fallback** — if nothing else is found, ``""`` is returned
    to ensure the candidate list is never empty.
 """
 import re
@@ -64,6 +68,54 @@ SYMBOL_ALIASES: dict[str, str] = {
     "left brace": "{",
     "right brace": "}",
 }
+
+# Words that are structurally part of function-invocation prompts but are
+# never the actual argument value the function should receive.  These are
+# imperative verb forms and meta-nouns that the StringParameterExtractor
+# must exclude from bare-word candidate generation.
+_IMPERATIVE_STRUCTURAL_WORDS: frozenset[str] = frozenset(
+    {
+        "greet",
+        "reverse",
+        "say",
+        "hello",
+        "calculate",
+        "compute",
+        "find",
+        "replace",
+        "substitute",
+        "what",
+        "which",
+        "string",
+        "number",
+        "result",
+        "value",
+        "get",
+        "give",
+        "tell",
+        "show",
+        "please",
+        "print",
+    }
+)
+
+
+def _build_function_verb_exclusions(function_name: str) -> frozenset[str]:
+    """Derive a set of words to exclude from the given *function_name*.
+
+    Splits the name on underscores and removes the ``"fn"`` prefix token so
+    that, for example, ``"fn_reverse_string"`` yields ``{"reverse", "string"}``
+    and ``"fn_greet"`` yields ``{"greet"}``.
+
+    Args:
+        function_name: The raw function name as it appears in the schema.
+
+    Returns:
+        A frozenset of lowercase word tokens that should be excluded from
+        bare-word string candidate generation for this function.
+    """
+    parts = function_name.lower().split("_")
+    return frozenset(p for p in parts if p and p != "fn")
 
 
 class StringParameterExtractor:
@@ -149,10 +201,63 @@ class StringParameterExtractor:
         longest = max(quoted, key=len)
         return [longest]
 
+    def _extract_proper_noun_candidates(self, prompt: str) -> list[str]:
+        """Extract likely proper-noun argument values from *prompt*.
+
+        Two strategies are applied in priority order:
+
+        1. **Prepositional-phrase targets** — words immediately after
+           ``to``, ``for``, ``called``, or ``named`` are strong signals that
+           a proper name follows (e.g. "say hello *to Diana*", "greet
+           *called John*").
+        2. **Mid-sentence capitals** — a capitalised word that is *not* the
+           first word of the prompt and is *not* a known structural word is
+           likely a proper name (e.g. "Greet *Shrek*").
+
+        Args:
+            prompt: The raw user prompt.
+
+        Returns:
+            A deduplicated list of candidate strings ordered by extraction
+            priority, or an empty list when no signals are found.
+        """
+        candidates: list[str] = []
+
+        # Strategy 1: word following "to", "for", "called", or "named".
+        for m in re.finditer(
+            r"\b(?:to|for|called|named)\s+([A-Za-z]\w*)",
+            prompt,
+            flags=re.IGNORECASE,
+        ):
+            word = m.group(1)
+            if word.lower() not in _IMPERATIVE_STRUCTURAL_WORDS:
+                if word not in candidates:
+                    candidates.append(word)
+
+        # Strategy 2: mid-sentence capitalised words.
+        words = prompt.split()
+        for idx, word in enumerate(words):
+            # Strip punctuation for the capitalisation check.
+            clean = re.sub(r"[^A-Za-z0-9']", "", word)
+            if not clean:
+                continue
+            # Skip the very first word (sentence-initial capital is noise).
+            if idx == 0:
+                continue
+            if (
+                clean[0].isupper()
+                and clean.lower() not in _IMPERATIVE_STRUCTURAL_WORDS
+            ):
+                if clean not in candidates:
+                    candidates.append(clean)
+
+        return candidates
+
     def extract_candidates(
         self,
         prompt: str,
         parameter_name: str = "",
+        function_name: str = "",
     ) -> list[str]:
         """Extract string candidates from a prompt in priority order.
 
@@ -160,14 +265,20 @@ class StringParameterExtractor:
         --------
         1. Named-parameter shortcuts (``"replacement"`` and
            ``"source_string"`` use dedicated extraction helpers).
-        2. Quoted strings (single and double quotes).
-        3. Bare content words (stopwords excluded).
-        4. Empty string ``""`` if nothing else was found.
+        2. Proper-noun candidates for ``"name"`` parameters.
+        3. Quoted strings (single and double quotes).
+        4. Bare content words (stopwords, imperative/structural words, and
+           tokens derived from *function_name* are excluded).
+        5. Empty string ``""`` if nothing else was found.
 
         Args:
             prompt: The user prompt to extract candidates from.
             parameter_name: The name of the parameter being extracted.
                 Enables name-specific extraction logic when provided.
+            function_name: The name of the function being called.  Used to
+                derive additional tokens to exclude from bare-word candidates
+                so that the function's own name words are never returned as
+                argument values.
 
         Returns:
             A deduplicated list of string candidates in priority order.
@@ -180,13 +291,19 @@ class StringParameterExtractor:
         elif parameter_name == "source_string":
             candidates.extend(self._extract_source_string_candidates(prompt))
 
-        # Step 2: quoted strings (both single and double quotes).
+        # Step 2: proper-noun prioritizer for "name" parameters.
+        if parameter_name == "name":
+            for word in self._extract_proper_noun_candidates(prompt):
+                if word not in candidates:
+                    candidates.append(word)
+
+        # Step 3: quoted strings (both single and double quotes).
         for quoted in self._extract_quoted_strings(prompt):
             if quoted not in candidates:
                 candidates.append(quoted)
 
-        # Step 3: bare content words — common stopwords are removed so that
-        # function/parameter names and meaningful nouns remain.
+        # Step 4: bare content words — common stopwords, imperative structural
+        # words, and tokens derived from the active function name are removed.
         stopwords = {
             "the",
             "a",
@@ -248,13 +365,20 @@ class StringParameterExtractor:
             "if",
         }
 
+        # Build combined exclusion set: stopwords + imperative structural
+        # words + tokens derived from the active function name.
+        function_exclusions = _build_function_verb_exclusions(function_name)
+        excluded = (
+            stopwords | _IMPERATIVE_STRUCTURAL_WORDS | function_exclusions
+        )
+
         # Match whole words, preserving contractions and hyphenated forms.
         words = re.findall(r"\b\w+(?:['-]\w+)*\b", prompt)
         for word in words:
-            if word.lower() not in stopwords and word not in candidates:
+            if word.lower() not in excluded and word not in candidates:
                 candidates.append(word)
 
-        # Step 4: final fallback — guarantee at least one candidate so that
+        # Step 5: final fallback — guarantee at least one candidate so that
         # the decoder always has a valid JSON string to constrain against.
         if not candidates:
             candidates.append("")
