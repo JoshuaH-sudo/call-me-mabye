@@ -100,8 +100,8 @@ _IMPERATIVE_STRUCTURAL_WORDS: frozenset[str] = frozenset(
 )
 
 
-def _build_function_verb_exclusions(function_name: str) -> frozenset[str]:
-    """Derive a set of words to exclude from the given *function_name*.
+def _build_function_name_exclusions(function_name: str) -> frozenset[str]:
+    """Derive a set of tokens to exclude from the given *function_name*.
 
     Splits the name on underscores and removes the ``"fn"`` prefix token so
     that, for example, ``"fn_reverse_string"`` yields ``{"reverse", "string"}``
@@ -225,7 +225,7 @@ class StringParameterExtractor:
 
         # Strategy 1: word following "to", "for", "called", or "named".
         for m in re.finditer(
-            r"\b(?:to|for|called|named)\s+([A-Za-z]\w*)",
+            r"\b(?:to|for|called|named)\s+([A-Za-z]+)",
             prompt,
             flags=re.IGNORECASE,
         ):
@@ -237,8 +237,11 @@ class StringParameterExtractor:
         # Strategy 2: mid-sentence capitalised words.
         words = prompt.split()
         for idx, word in enumerate(words):
-            # Strip punctuation for the capitalisation check.
-            clean = re.sub(r"[^A-Za-z0-9']", "", word)
+            # Strip non-alphabetic and non-apostrophe characters so that
+            # punctuation attached to the word does not prevent the
+            # capitalisation check.  Digits are excluded because proper nouns
+            # do not normally contain them.
+            clean = re.sub(r"[^A-Za-z']", "", word)
             if not clean:
                 continue
             # Skip the very first word (sentence-initial capital is noise).
@@ -367,7 +370,7 @@ class StringParameterExtractor:
 
         # Build combined exclusion set: stopwords + imperative structural
         # words + tokens derived from the active function name.
-        function_exclusions = _build_function_verb_exclusions(function_name)
+        function_exclusions = _build_function_name_exclusions(function_name)
         excluded = (
             stopwords | _IMPERATIVE_STRUCTURAL_WORDS | function_exclusions
         )

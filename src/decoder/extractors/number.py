@@ -44,14 +44,17 @@ def _find_question_segment(prompt: str) -> str:
 
     Algorithm
     ---------
-    1. Split *prompt* into sentences on ``.``, ``?``, ``!`` boundaries,
-       taking care not to split on punctuation that appears inside quotes.
-    2. Prefer the last sentence that either ends with ``?`` or whose first
-       non-stopword token is a recognised question/intent word.
-    3. If no sentence matches those criteria, return the last sentence
-       (which is typically the operative instruction).
-    4. If the prompt contains no sentence boundary at all, return *prompt*
-       unchanged.
+    1. Identify all character positions inside quoted substrings so that
+       sentence-boundary punctuation within quotes is never treated as a split
+       point.
+    2. Walk the prompt character-by-character to find sentence boundaries
+       (a ``.``, ``?``, or ``!`` followed by whitespace that does not fall
+       inside a quoted span), collecting each sentence as a substring of the
+       original prompt.
+    3. Prefer the last sentence that either ends with ``?`` or whose first
+       token is a recognised question/intent word.
+    4. Fall back to the last sentence if no sentence matches those criteria,
+       or return *prompt* unchanged when no boundary is found.
 
     Args:
         prompt: The raw user prompt to segment.
@@ -60,27 +63,31 @@ def _find_question_segment(prompt: str) -> str:
         The question or instruction sentence, stripped of leading/trailing
         whitespace.
     """
-    # Tokenise into sentences while skipping punctuation inside quotes.
-    # Strategy: temporarily mask quoted substrings, split, then restore.
-    masked = prompt
-    quote_spans: list[tuple[int, int, str]] = []
+    # Step 1: collect the set of character positions that are inside quotes.
+    quoted_positions: set[int] = set()
     for m in re.finditer(r'"[^"]*"|\'[^\']*\'', prompt):
-        placeholder = "\x00" * len(m.group())
-        masked = masked[: m.start()] + placeholder + masked[m.end():]
-        quote_spans.append((m.start(), m.end(), m.group()))
+        quoted_positions.update(range(m.start(), m.end()))
 
-    raw_sentences = re.split(r'(?<=[.?!])\s+', masked.strip())
-    # Re-attach any trailing punctuation that ended up on its own.
+    # Step 2: find sentence-boundary split positions — a sentence end is a
+    # `.`, `?`, or `!` that is NOT inside a quoted span, followed by at least
+    # one whitespace character.
+    split_positions: list[int] = []
+    for m in re.finditer(r'[.?!]\s+', prompt):
+        if m.start() not in quoted_positions:
+            # Record the start of the *next* sentence (after the whitespace).
+            split_positions.append(m.end())
+
+    if not split_positions:
+        return prompt.strip()
+
+    # Step 3: build sentence list from the original prompt.
+    starts = [0] + split_positions
     sentences: list[str] = []
-    for raw in raw_sentences:
-        # Restore masked quotes.
-        restored = raw
-        for start, end, original in quote_spans:
-            placeholder = "\x00" * len(original)
-            restored = restored.replace(placeholder, original, 1)
-        stripped = restored.strip()
-        if stripped:
-            sentences.append(stripped)
+    for i, start in enumerate(starts):
+        end = split_positions[i] if i < len(split_positions) else len(prompt)
+        segment = prompt[start:end].strip()
+        if segment:
+            sentences.append(segment)
 
     if not sentences:
         return prompt.strip()
@@ -88,8 +95,8 @@ def _find_question_segment(prompt: str) -> str:
     if len(sentences) == 1:
         return sentences[0]
 
-    # Score each sentence: prefer those ending with '?' or beginning with an
-    # intent word, and favour later sentences (higher index → higher weight).
+    # Step 4: score each sentence.  Prefer later sentences that end with '?'
+    # or begin with a recognised question/intent word.
     best_sentence = sentences[-1]
     best_score = -1
     for idx, sentence in enumerate(sentences):
