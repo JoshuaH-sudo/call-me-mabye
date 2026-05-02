@@ -476,9 +476,12 @@ class CandidateBuilder:
         # always produce at least one candidate.
         if not filtered_fns:
             filtered_fns = sorted_fns[:1]
+        else:
+            # limit to top 3 functions to control expansion cost
+            filtered_fns = filtered_fns[:3]
 
         all_candidates: OutputCandidates = []
-        for function_definition in filtered_fns[:3]:  # limit to top 3 functions to control expansion cost
+        for function_definition in filtered_fns:
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
                     function_definition=function_definition,

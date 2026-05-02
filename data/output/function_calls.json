@@ -1,9 +1,10 @@
 [
   {
     "prompt": "say hello to Diana!",
-    "name": "fn_greet",
+    "name": "fn_add_numbers",
     "parameters": {
-      "name": "Diana"
+      "a": 0,
+      "b": 0
     }
   },
   {
