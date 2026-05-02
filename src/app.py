@@ -128,8 +128,6 @@ def main() -> int:
                 list[int], llm.encode(enriched_text)[0].tolist()
             )
 
-            print(f"{llm.get_path_to_vocab_file()=}")
-
             # Run constrained decoding: the decoder uses model logits to
             # score token choices but only allows tokens that continue one of
             # the precomputed JSON candidates.
