@@ -90,7 +90,7 @@ class PromptContextBuilder(BaseModel):
                 f"{param_name}: {_display_type(param_def.type)}"
                 for param_name, param_def in fn.parameters.items()
             )
-            lines.append(f"{fn.name}({param_parts})")
+            lines.append(f"{fn.name}({param_parts}) - {fn.description}")
 
         body = "\n".join(lines)
         return f"<available_functions>\n{body}\n</available_functions>"

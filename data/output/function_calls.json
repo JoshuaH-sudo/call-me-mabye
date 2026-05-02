@@ -7,6 +7,14 @@
     }
   },
   {
+    "prompt": "what is the result of 33 remove 12?",
+    "name": "fn_minus_numbers",
+    "parameters": {
+      "a": 33.0,
+      "b": 12.0
+    }
+  },
+  {
     "prompt": "What is the sum of 2 and 3?",
     "name": "fn_add_numbers",
     "parameters": {

@@ -20,6 +20,7 @@ Design notes
   instead of a cross-product to preserve the natural left-to-right ordering
   of numbers mentioned in the prompt.
 """
+
 import json
 import re
 
@@ -452,9 +453,7 @@ class CandidateBuilder:
         def has_candidates_for_all_params(fn: FunctionDefinition) -> bool:
             """Return True when every parameter yields at least one value."""
             return all(
-                bool(
-                    self.parameter_candidates(prompt, defn, name, fn.name)
-                )
+                bool(self.parameter_candidates(prompt, defn, name, fn.name))
                 for name, defn in fn.parameters.items()
             )
 
@@ -478,11 +477,8 @@ class CandidateBuilder:
         if not filtered_fns:
             filtered_fns = sorted_fns[:1]
 
-        # Pick only the single best function to keep the candidate set small.
-        top_fn = filtered_fns[:1]
-
         all_candidates: OutputCandidates = []
-        for function_definition in top_fn:
+        for function_definition in filtered_fns[:3]:  # limit to top 3 functions to control expansion cost
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
                     function_definition=function_definition,
