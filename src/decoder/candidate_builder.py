@@ -19,10 +19,15 @@ Design notes
 * When all parameters are numeric, a *sliding-window* strategy is used
   instead of a cross-product to preserve the natural left-to-right ordering
   of numbers mentioned in the prompt.
+* When an LLM is provided, ``regex``-typed parameters are extracted by
+  :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder` instead of
+  the keyword-based
+  :class:`~src.decoder.extractors.regex.RegexParameterExtractor`.
 """
 
 import json
 import re
+from typing import TYPE_CHECKING
 
 from .models import FunctionDefinition, ParameterDefinition
 from .extractors.number import NumberParameterExtractor
@@ -35,6 +40,12 @@ from .types import (
     ParameterValues,
     ParameterValueSpace,
 )
+
+if TYPE_CHECKING:
+    # Imported here only to satisfy type checkers; the actual import is
+    # deferred to __init__ to avoid loading the LLM stack when
+    # CandidateBuilder is used without a model.
+    from llm_sdk import Small_LLM_Model
 
 # Words that carry no semantic signal for function selection.
 _STOPWORDS = {
@@ -148,13 +159,37 @@ class CandidateBuilder:
     * :class:`~src.decoder.extractors.string.StringParameterExtractor`
     * :class:`~src.decoder.extractors.number.NumberParameterExtractor`
     * :class:`~src.decoder.extractors.regex.RegexParameterExtractor`
+
+    When *llm* is supplied at construction time, ``regex``-named parameters
+    are extracted by
+    :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder` instead of
+    the keyword map, giving the model full creative freedom over the
+    generated pattern.
     """
 
-    def __init__(self) -> None:
-        """Instantiate all three parameter extractors."""
+    def __init__(
+        self,
+        llm: "Small_LLM_Model | None" = None,
+    ) -> None:
+        """Instantiate all three parameter extractors.
+
+        Args:
+            llm: Optional language model.  When provided, a
+                :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder`
+                is created and used for ``regex``-named parameters.
+                When ``None``, the keyword-based
+                :class:`~src.decoder.extractors.regex.RegexParameterExtractor`
+                is used as a fallback.
+        """
         self.string_extractor = StringParameterExtractor()
         self.number_extractor = NumberParameterExtractor()
         self.regex_extractor = RegexParameterExtractor()
+        self._regex_decoder: "RegexConstrainedDecoder | None" = None
+        if llm is not None:
+            # Deferred import to avoid loading torch/llm_sdk when this
+            # class is used without a model (e.g. schema-only tooling).
+            from .regex_decoder import RegexConstrainedDecoder
+            self._regex_decoder = RegexConstrainedDecoder(llm=llm)
 
     def _default_parameter_value(self, parameter_type: str) -> object:
         """Return the safe fallback value for *parameter_type*.
@@ -213,6 +248,8 @@ class CandidateBuilder:
             A list of candidate values ordered by extraction priority.
         """
         if parameter_name == "regex":
+            if self._regex_decoder is not None:
+                return [self._regex_decoder.generate_regex(prompt)]
             return list(self.regex_extractor.extract_candidates(prompt))
         if parameter_definition.type == "string":
             return list(

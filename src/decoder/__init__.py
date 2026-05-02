@@ -9,17 +9,23 @@ Public surface (without pulling in the LLM dependency at import time):
   candidate strings that constrain decoding.
 * :class:`~src.decoder.prefix_matcher.PrefixMatcher` — validates token
   sequences against precomputed candidates.
+* :class:`~src.decoder.regex_token_validator.RegexTokenValidator` — stateless
+  helper for checking regex prefix and completion validity.
 * All type aliases from :mod:`src.decoder.types`.
 
-:class:`~src.decoder.constrained_decoder.ConstrainedDecoder` and
-:class:`~src.decoder.token_selector.TokenSelector` are **not** exported here
-because they import ``llm_sdk`` (which depends on ``torch``).  Import them
-directly from their submodules to avoid loading the LLM stack when only the
-schema models are needed.
+The following classes are **not** exported here because they import
+``llm_sdk`` (which depends on ``torch``).  Import them directly from their
+submodules to avoid loading the LLM stack when only the schema models are
+needed:
+
+* :class:`~src.decoder.constrained_decoder.ConstrainedDecoder`
+* :class:`~src.decoder.token_selector.TokenSelector`
+* :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder`
 """
 from .models import FunctionDefinition, ParameterDefinition, ReturnDefinition
 from .candidate_builder import CandidateBuilder
 from .prefix_matcher import PrefixMatcher
+from .regex_token_validator import RegexTokenValidator
 from .types import (
     AllowedTokenIds,
     EncodedOutputCandidates,
@@ -38,6 +44,7 @@ __all__ = [
     "ReturnDefinition",
     "CandidateBuilder",
     "PrefixMatcher",
+    "RegexTokenValidator",
     "ParameterValue",
     "ParameterValues",
     "ParameterValueSpace",
