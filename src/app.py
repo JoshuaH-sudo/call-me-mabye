@@ -12,6 +12,7 @@ High-level data flow
                             decoding and emit a validated JSON function-call
 4. ``output_results``      — write the list of results to the output file
 """
+
 import json
 import sys
 from typing import cast
@@ -123,7 +124,11 @@ def main() -> int:
                 raw_prompt=prompt_case.prompt,
                 functions=functions,
             )
-            enriched_ids = cast(list[int], llm.encode(enriched_text)[0].tolist())
+            enriched_ids = cast(
+                list[int], llm.encode(enriched_text)[0].tolist()
+            )
+
+            print(f"{llm.get_path_to_vocab_file()=}")
 
             # Run constrained decoding: the decoder uses model logits to
             # score token choices but only allows tokens that continue one of
