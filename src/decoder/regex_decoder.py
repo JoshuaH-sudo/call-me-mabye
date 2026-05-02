@@ -27,14 +27,14 @@ from .regex_token_validator import RegexTokenValidator
 
 # Template used to frame the user prompt for the regex generation pass.
 # The raw *prompt* is injected at ``{prompt}``.
-_PROMPT_TEMPLATE = (
-    "<instruction>Write a single Python-compatible regular expression "
-    "that matches the described pattern. Output only the regex pattern, "
-    "nothing else. Do not add quotes or "
-    "explanations.</instruction>\n"
-    "<question>{prompt}</question>\n"
-    "Regex:"
-)
+#
+# Important: do NOT use XML-like tags (e.g. <instruction>, <question>) here.
+# Qwen3-0.6B generates closing XML tags (e.g. " </regex") when the prompt
+# context looks like XML and ends with a word that resembles a tag name.
+# Those closing-tag strings are technically valid Python regexes (they match
+# the literal characters) so the validator would accept them — producing
+# useless output.  A plain-text prompt avoids this entirely.
+_PROMPT_TEMPLATE = "Task: {prompt}\nRegex: "
 
 __all__ = ["RegexConstrainedDecoder"]
 
@@ -187,14 +187,13 @@ class RegexConstrainedDecoder(BaseModel):
             # appearing anywhere in the top-K window.
             if top_ids:
                 top_text: str = self.llm.decode([top_ids[0]])
+                stripped = current_partial.strip()
                 if (
                     _is_stop_token(top_text)
-                    and current_partial
-                    and self.validator.is_valid_complete_regex(
-                        current_partial
-                    )
+                    and stripped
+                    and self.validator.is_valid_complete_regex(stripped)
                 ):
-                    return current_partial
+                    return stripped
 
             # Collect valid continuations from all non-stop top-K tokens.
             continuations: list[tuple[int, str, float]] = []
@@ -232,10 +231,11 @@ class RegexConstrainedDecoder(BaseModel):
                             )
 
                 if not continuations:
-                    if self.validator.is_valid_complete_regex(
-                        current_partial
+                    stripped = current_partial.strip()
+                    if stripped and self.validator.is_valid_complete_regex(
+                        stripped
                     ):
-                        return current_partial
+                        return stripped
                     return self._fallback(prompt)
 
             # Select the continuation with the highest logit score.
@@ -245,7 +245,11 @@ class RegexConstrainedDecoder(BaseModel):
             current_partial += best_text
             rolling_ids.append(best_tid)
 
-        # Post-loop: return when valid, otherwise use keyword fallback.
-        if self.validator.is_valid_complete_regex(current_partial):
+        # Post-loop: strip BPE leading/trailing whitespace and return when
+        # the result is a valid complete regex.
+        current_partial = current_partial.strip()
+        if current_partial and self.validator.is_valid_complete_regex(
+            current_partial
+        ):
             return current_partial
         return self._fallback(prompt)
