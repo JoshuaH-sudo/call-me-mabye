@@ -7,6 +7,13 @@
     }
   },
   {
+    "prompt": "what is the result of 33 remove 12?",
+    "name": "fn_greet",
+    "parameters": {
+      "name": "33"
+    }
+  },
+  {
     "prompt": "What is the sum of 2 and 3?",
     "name": "fn_add_numbers",
     "parameters": {
@@ -74,11 +81,9 @@
   },
   {
     "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
-    "name": "fn_substitute_string_with_regex",
+    "name": "fn_get_square_root",
     "parameters": {
-      "regex": "\\d+",
-      "replacement": "NUMBERS",
-      "source_string": "Hello 34 I'm 233 years old"
+      "a": 34.0
     }
   },
   {

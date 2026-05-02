@@ -20,6 +20,7 @@ Design notes
   instead of a cross-product to preserve the natural left-to-right ordering
   of numbers mentioned in the prompt.
 """
+
 import json
 import re
 
@@ -184,6 +185,7 @@ class CandidateBuilder:
         prompt: str,
         parameter_definition: ParameterDefinition,
         parameter_name: str = "",
+        function_name: str = "",
     ) -> list[ParameterValue]:
         """Extract candidate values for a single parameter from *prompt*.
 
@@ -203,6 +205,9 @@ class CandidateBuilder:
             parameter_definition: Schema for the parameter being extracted.
             parameter_name: The parameter's name in the function schema
                 (used for name-based dispatch and context-aware extraction).
+            function_name: The name of the function being called.  Forwarded
+                to the string extractor so that function-name tokens can be
+                excluded from bare-word string candidates.
 
         Returns:
             A list of candidate values ordered by extraction priority.
@@ -214,6 +219,7 @@ class CandidateBuilder:
                 self.string_extractor.extract_candidates(
                     prompt,
                     parameter_name,
+                    function_name,
                 )
             )
         if parameter_definition.type == "number":
@@ -260,9 +266,13 @@ class CandidateBuilder:
         **Sliding-window (all-numeric parameters)**
         When every parameter expects a number, the extracted values are
         assigned left-to-right using a sliding window over the ordered list
-        of mentions.  This mirrors the natural ordering of numbers in prose
-        (e.g. "add 3 and 7" → ``a=3, b=7``) and avoids the cross-product
-        explosion for multi-parameter numeric functions.
+        of mentions.  To avoid numeric context contamination from preamble
+        sentences, extraction is attempted on the question/intent segment of
+        the prompt first.  If that segment alone yields enough values to fill
+        all parameters the window is built exclusively from those values,
+        keeping the candidate set small and unambiguous.  Full-prompt
+        extraction is used only as a fallback when the question segment does
+        not contain enough numbers by itself.
 
         **Cross-product (mixed / string parameters)**
         For functions with string (or mixed) parameters the method builds
@@ -288,10 +298,26 @@ class CandidateBuilder:
             function_definition.parameters[name].type == "number"
             for name in parameter_names
         ):
-            numeric_values = self.number_extractor.extract_candidates(prompt)
+            width = len(parameter_names)
+
+            # Prefer numbers from the question/intent segment to avoid
+            # contamination from numeric context in preamble sentences.
+            question_values = (
+                self.number_extractor.extract_candidates_from_question_segment(
+                    prompt
+                )
+            )
+            if len(question_values) >= width:
+                numeric_values = question_values
+            else:
+                # Fall back to full-prompt extraction when the question
+                # segment alone doesn't supply enough numbers.
+                numeric_values = self.number_extractor.extract_candidates(
+                    prompt
+                )
+
             if numeric_values:
                 aligned: list[ParameterValues] = []
-                width = len(parameter_names)
 
                 if len(numeric_values) >= width:
                     # Slide a window of exactly `width` values across the
@@ -339,11 +365,18 @@ class CandidateBuilder:
         # Strategy B: cross-product expansion for mixed / string parameters   #
         # ------------------------------------------------------------------ #
 
-        # Collect candidate value lists for each parameter.
+        # Collect candidate value lists for each parameter, passing the
+        # active function name so that the string extractor can exclude
+        # function-name-derived tokens from its bare-word candidates.
         value_space: ParameterValueSpace = {}
         for name in parameter_names:
             definition = function_definition.parameters[name]
-            values = self.parameter_candidates(prompt, definition, name)
+            values = self.parameter_candidates(
+                prompt,
+                definition,
+                name,
+                function_definition.name,
+            )
             if not values:
                 # Guarantee at least one value so the cross-product is
                 # never empty.
@@ -420,7 +453,7 @@ class CandidateBuilder:
         def has_candidates_for_all_params(fn: FunctionDefinition) -> bool:
             """Return True when every parameter yields at least one value."""
             return all(
-                bool(self.parameter_candidates(prompt, defn, name))
+                bool(self.parameter_candidates(prompt, defn, name, fn.name))
                 for name, defn in fn.parameters.items()
             )
 
@@ -443,12 +476,12 @@ class CandidateBuilder:
         # always produce at least one candidate.
         if not filtered_fns:
             filtered_fns = sorted_fns[:1]
-
-        # Pick only the single best function to keep the candidate set small.
-        top_fn = filtered_fns[:1]
+        else:
+            # limit to top 3 functions to control expansion cost
+            filtered_fns = filtered_fns
 
         all_candidates: OutputCandidates = []
-        for function_definition in top_fn:
+        for function_definition in filtered_fns:
             all_candidates.extend(
                 self.expand_function_candidates_for_prompt(
                     function_definition=function_definition,

@@ -14,6 +14,105 @@ natural reading order of the text.
 """
 import re
 
+# Words that signal the start of a question or instruction sentence.
+_QUESTION_INTENT_WORDS = {
+    "what",
+    "which",
+    "how",
+    "calculate",
+    "compute",
+    "find",
+    "evaluate",
+    "determine",
+    "solve",
+    "sum",
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+}
+
+
+def _find_question_segment(prompt: str) -> str:
+    """Return the most intent-bearing sentence from *prompt*.
+
+    When a prompt contains background context followed by an actual question
+    or instruction (e.g. "10 + 5 = 15 and 5+10 also equals 15.  What is the
+    sum of 2 and 3?"), this helper isolates the question/instruction part so
+    that number extraction can focus on the relevant numbers rather than the
+    noise in the preamble.
+
+    Algorithm
+    ---------
+    1. Identify all character positions inside quoted substrings so that
+       sentence-boundary punctuation within quotes is never treated as a split
+       point.
+    2. Walk the prompt character-by-character to find sentence boundaries
+       (a ``.``, ``?``, or ``!`` followed by whitespace that does not fall
+       inside a quoted span), collecting each sentence as a substring of the
+       original prompt.
+    3. Prefer the last sentence that either ends with ``?`` or whose first
+       token is a recognised question/intent word.
+    4. Fall back to the last sentence if no sentence matches those criteria,
+       or return *prompt* unchanged when no boundary is found.
+
+    Args:
+        prompt: The raw user prompt to segment.
+
+    Returns:
+        The question or instruction sentence, stripped of leading/trailing
+        whitespace.
+    """
+    # Step 1: collect the set of character positions that are inside quotes.
+    quoted_positions: set[int] = set()
+    for m in re.finditer(r'"[^"]*"|\'[^\']*\'', prompt):
+        quoted_positions.update(range(m.start(), m.end()))
+
+    # Step 2: find sentence-boundary split positions — a sentence end is a
+    # `.`, `?`, or `!` that is NOT inside a quoted span, followed by at least
+    # one whitespace character.
+    split_positions: list[int] = []
+    for m in re.finditer(r'[.?!]\s+', prompt):
+        if m.start() not in quoted_positions:
+            # Record the start of the *next* sentence (after the whitespace).
+            split_positions.append(m.end())
+
+    if not split_positions:
+        return prompt.strip()
+
+    # Step 3: build sentence list from the original prompt.
+    starts = [0] + split_positions
+    sentences: list[str] = []
+    for i, start in enumerate(starts):
+        end = split_positions[i] if i < len(split_positions) else len(prompt)
+        segment = prompt[start:end].strip()
+        if segment:
+            sentences.append(segment)
+
+    if not sentences:
+        return prompt.strip()
+
+    if len(sentences) == 1:
+        return sentences[0]
+
+    # Step 4: score each sentence.  Prefer later sentences that end with '?'
+    # or begin with a recognised question/intent word.
+    best_sentence = sentences[-1]
+    best_score = -1
+    for idx, sentence in enumerate(sentences):
+        score = idx  # later sentences are preferred over earlier ones
+        if sentence.rstrip().endswith("?"):
+            score += len(sentences) * 2  # strong signal
+        first_word = re.match(r"\w+", sentence.lower())
+        if first_word and first_word.group() in _QUESTION_INTENT_WORDS:
+            score += len(sentences)  # moderate signal
+        if score > best_score:
+            best_score = score
+            best_sentence = sentence
+
+    return best_sentence
+
+
 UNITS: dict[str, int] = {
     "zero": 0,
     "one": 1,
@@ -322,3 +421,25 @@ class NumberParameterExtractor:
         if not ordered_values:
             return []
         return ordered_values
+
+    def extract_candidates_from_question_segment(
+        self, prompt: str
+    ) -> list[float]:
+        """Extract numbers only from the question/intent part of *prompt*.
+
+        Uses :func:`_find_question_segment` to isolate the sentence that
+        carries the actual instruction before delegating to
+        :meth:`extract_candidates`.  This prevents numeric context that
+        appears in preamble sentences from polluting the candidate set.
+
+        Args:
+            prompt: The full user prompt, which may contain background
+                context sentences before the operative question.
+
+        Returns:
+            A list of numeric candidates extracted from the question segment
+            only, ordered by appearance.  Falls back to the full-prompt
+            extraction when the question segment yields no candidates.
+        """
+        question_segment = _find_question_segment(prompt)
+        return self.extract_candidates(question_segment)
