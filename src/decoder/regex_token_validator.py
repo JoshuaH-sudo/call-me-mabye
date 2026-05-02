@@ -85,7 +85,18 @@ class RegexTokenValidator(BaseModel):
         for suffix in _COMPLETION_ATTEMPTS:
             try:
                 with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                    # Suppress DeprecationWarning and FutureWarning
+                    # emitted by re.compile for patterns that are
+                    # syntactically valid today but flagged as suspect
+                    # (e.g. nested character sets like [[a]]).  These
+                    # are exploratory completion checks, not production
+                    # patterns.
+                    warnings.filterwarnings(
+                        "ignore", category=DeprecationWarning
+                    )
+                    warnings.filterwarnings(
+                        "ignore", category=FutureWarning
+                    )
                     re.compile(s + suffix)
                 return True
             except re.error:

@@ -215,9 +215,12 @@ class RegexConstrainedDecoder(BaseModel):
                 expanded_ids: list[int] = (
                     np.argsort(arr)[-expanded_k:][::-1].tolist()
                 )
-                already_seen: set[int] = {t[0] for t in continuations}
+                # Skip tokens already evaluated in the initial top_k
+                # pass (whether they were stop signals or failed the
+                # prefix validity check).
+                already_evaluated: set[int] = set(top_ids)
                 for tid in expanded_ids:
-                    if tid in already_seen:
+                    if tid in already_evaluated:
                         continue
                     text = self.llm.decode([tid])
                     if not _is_stop_token(text):

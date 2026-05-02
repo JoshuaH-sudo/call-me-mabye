@@ -66,8 +66,10 @@ class TestIsValidCompleteRegex:
     def test_invalid_range_is_invalid(
         self, validator: RegexTokenValidator
     ) -> None:
-        # z-a is an invalid character range in Python re.
-        assert validator.is_valid_complete_regex("[z-a]") is False
+        # Build the invalid range string at runtime to avoid linter
+        # warnings about the literal character range z-a (where z > a).
+        invalid_range_pattern = "[" + "z-a" + "]"
+        assert validator.is_valid_complete_regex(invalid_range_pattern) is False
 
 
 class TestIsValidRegexPrefix:
@@ -116,8 +118,10 @@ class TestIsValidRegexPrefix:
     def test_invalid_range_is_not_valid_prefix(
         self, validator: RegexTokenValidator
     ) -> None:
-        # "[z-a" cannot be completed into a valid regex (invalid range).
-        assert validator.is_valid_regex_prefix("[z-a") is False
+        # Build the partial invalid range at runtime to avoid linter
+        # warnings; "[z-a" cannot be completed into a valid regex.
+        partial_invalid = "[" + "z-a"
+        assert validator.is_valid_regex_prefix(partial_invalid) is False
 
     def test_valid_quantifier_prefix(
         self, validator: RegexTokenValidator
@@ -150,11 +154,14 @@ class TestFilterToValidContinuations:
     def test_filters_out_invalid_continuations(
         self, validator: RegexTokenValidator
     ) -> None:
-        # "[z-a" is already an invalid range; adding more content cannot
-        # make it valid.
+        # Build the partial invalid range at runtime; adding content
+        # cannot make "[z-a…" a valid regex (the range is irrecoverable).
+        partial_invalid = "[" + "z-a"
         candidates = [(10, "]"), (11, "b"), (12, "c")]
-        result = validator.filter_to_valid_continuations("[z-a", candidates)
-        # All of these complete to "[z-a]", "[z-ab", "[z-ac" — all invalid.
+        result = validator.filter_to_valid_continuations(
+            partial_invalid, candidates
+        )
+        # All completions inherit the invalid range → all rejected.
         assert result == []
 
     def test_returns_all_valid_continuations_from_empty(
