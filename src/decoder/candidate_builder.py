@@ -478,7 +478,7 @@ class CandidateBuilder:
             filtered_fns = sorted_fns[:1]
         else:
             # limit to top 3 functions to control expansion cost
-            filtered_fns = filtered_fns[:3]
+            filtered_fns = filtered_fns
 
         all_candidates: OutputCandidates = []
         for function_definition in filtered_fns:

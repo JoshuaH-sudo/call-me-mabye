@@ -8,10 +8,9 @@
   },
   {
     "prompt": "what is the result of 33 remove 12?",
-    "name": "fn_minus_numbers",
+    "name": "fn_greet",
     "parameters": {
-      "a": 33.0,
-      "b": 12.0
+      "name": "33"
     }
   },
   {
@@ -82,11 +81,9 @@
   },
   {
     "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
-    "name": "fn_substitute_string_with_regex",
+    "name": "fn_get_square_root",
     "parameters": {
-      "regex": "\\d+",
-      "replacement": "NUMBERS",
-      "source_string": "Hello 34 I'm 233 years old"
+      "a": 34.0
     }
   },
   {

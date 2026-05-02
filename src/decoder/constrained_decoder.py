@@ -271,4 +271,4 @@ class ConstrainedDecoder:
             rolling_prefix.append(selected_token_id)
 
         # Step 4: convert the final token-ID sequence back to a string.
-        return self.llm.decode(generated_ids)
+        return str(self.llm.decode(generated_ids))

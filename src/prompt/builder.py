@@ -3,8 +3,9 @@
 :class:`PromptContextBuilder` enriches a raw user prompt with two kinds of
 contextual signal before it is fed to the model for logit scoring:
 
-1. **Tool/function-call schema tokens** — a structured ``<available_functions>``
-   block that lists every available function's name and parameter signatures
+1. **Tool/function-call schema tokens** — a structured
+   ``<available_functions>`` block that lists every available function's
+   name and parameter signatures
    so the model's attention is explicitly directed to the callable set.
 
 2. **Structural hint tokens** — lightweight XML-style tags (``<instruction>``
@@ -40,7 +41,8 @@ def _display_type(raw_type: str) -> str:
     added to the schema do not silently break the builder.
 
     Args:
-        raw_type: The ``type`` field from a :class:`~src.decoder.models.ParameterDefinition`.
+        raw_type: The ``type`` field from a
+            :class:`~src.decoder.models.ParameterDefinition`.
 
     Returns:
         A short display string such as ``"str"`` or ``"float"``.
