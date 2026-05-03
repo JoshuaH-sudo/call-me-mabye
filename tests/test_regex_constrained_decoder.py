@@ -225,6 +225,76 @@ class TestFallbackBehaviour:
         assert result == ".*"
 
 
+class TestTrailingRepetitionDetection:
+    """Unit tests for _detect_trailing_repetition helper."""
+
+    def _make_decoder(self) -> RegexConstrainedDecoder:
+        # The LLM mock is never called in these tests.
+        return RegexConstrainedDecoder(llm=MagicMock())
+
+    def test_doubled_char_class_detected(self) -> None:
+        decoder = self._make_decoder()
+        result = decoder._detect_trailing_repetition(
+            "[aeiouAEIOU][aeiouAEIOU]"
+        )
+        assert result == "[aeiouAEIOU]"
+
+    def test_doubled_digit_shorthand_detected(self) -> None:
+        decoder = self._make_decoder()
+        result = decoder._detect_trailing_repetition(r"\d+\d+")
+        assert result == r"\d+"
+
+    def test_no_detection_for_distinct_segments(self) -> None:
+        # [a-z][0-9] has different left and right halves.
+        decoder = self._make_decoder()
+        result = decoder._detect_trailing_repetition("[a-z][0-9]")
+        assert result is None
+
+    def test_no_detection_when_prefix_empty(self) -> None:
+        # "aa" has only 2 chars; with min_segment=2 the loop range is
+        # range(1, 1, -1) which is empty — strings shorter than
+        # 2 * min_segment (4 chars) cannot contain a detectable doubled
+        # segment, so no repetition is possible.
+        decoder = self._make_decoder()
+        result = decoder._detect_trailing_repetition("aa")
+        assert result is None
+
+    def test_doubled_shorthand_with_no_quantifier_detected(self) -> None:
+        # \d\d doubles \d (a valid complete regex) → returns \d.
+        decoder = self._make_decoder()
+        result = decoder._detect_trailing_repetition(r"\d\d")
+        assert result == r"\d"
+
+    def test_no_detection_for_single_valid_regex(self) -> None:
+        decoder = self._make_decoder()
+        assert decoder._detect_trailing_repetition("[a-z]+") is None
+
+    def test_no_detection_for_intentional_extension(self) -> None:
+        # "[a-z][A-Z]" has two distinct halves — not a repetition.
+        decoder = self._make_decoder()
+        assert decoder._detect_trailing_repetition("[a-z][A-Z]") is None
+
+
+class TestRepetitionGuardIntegration:
+    """Verify the repetition guard fires during generate_regex."""
+
+    def test_doubled_char_class_truncated(self) -> None:
+        # The mock drives toward "[aeiouAEIOU][aeiouAEIOU]".
+        # The repetition guard should intercept and return "[aeiouAEIOU]".
+        llm = _make_regex_llm_mock("[aeiouAEIOU][aeiouAEIOU]")
+        decoder = RegexConstrainedDecoder(llm=llm)
+        result = decoder.generate_regex("replace all vowels")
+        assert result == "[aeiouAEIOU]"
+
+    def test_single_valid_regex_not_truncated(self) -> None:
+        # When the mock drives toward a pattern without repetition,
+        # the guard must not fire and the full regex must be returned.
+        llm = _make_regex_llm_mock(r"\d+")
+        decoder = RegexConstrainedDecoder(llm=llm)
+        result = decoder.generate_regex("match digits")
+        assert result == r"\d+"
+
+
 class TestConfigurableParameters:
     """Verify that max_tokens and top_k can be customised."""
 

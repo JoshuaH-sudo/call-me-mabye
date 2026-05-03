@@ -129,6 +129,43 @@ class RegexConstrainedDecoder(BaseModel):
         top_ids: list[int] = np.argsort(arr)[-k:][::-1].tolist()
         return top_ids
 
+    def _detect_trailing_repetition(
+        self, text: str, min_segment: int = 2
+    ) -> str | None:
+        """Return the de-duplicated prefix if *text* ends with a doubled
+        segment.
+
+        Scans candidate segment lengths from ``len(text) // 2`` down to
+        *min_segment*.  For each length ``L``, the last ``2 * L`` characters
+        of *text* are split into two equal halves; when they are identical
+        **and** the resulting prefix (``text[:-L]``) is a non-empty valid
+        complete regex, that prefix is returned immediately.
+
+        This detects patterns such as
+        ``"[aeiouAEIOU][aeiouAEIOU]"`` → ``"[aeiouAEIOU]"`` and
+        ``"\\d+\\d+"`` → ``"\\d+"``, which arise when the model
+        repeats a regex it has already completed.
+
+        Args:
+            text: The accumulated partial regex string to inspect.
+            min_segment: Minimum segment length (in characters) to
+                consider.  Defaults to ``2`` to avoid spurious matches
+                on single-character strings.
+
+        Returns:
+            The prefix with the trailing repeated copy removed, or
+            ``None`` if no qualifying repetition is detected.
+        """
+        n = len(text)
+        for seg_len in range(n // 2, min_segment - 1, -1):
+            if text[-2 * seg_len:-seg_len] == text[-seg_len:]:
+                candidate = text[:-seg_len]
+                if candidate and self.validator.is_valid_complete_regex(
+                    candidate
+                ):
+                    return candidate
+        return None
+
     def generate_regex(self, prompt: str) -> str:
         """Generate a valid regex string for the intent in *prompt*.
 
@@ -154,6 +191,9 @@ class RegexConstrainedDecoder(BaseModel):
            g. Select the highest-logit passing continuation, append its
               text to *current_partial*, and append its ID to the
               rolling context.
+           h. Apply the repetition guard: if *current_partial* now ends
+              with an immediately doubled segment whose first half is a
+              valid complete regex, return that half immediately.
 
         3. After the loop, return *current_partial* when valid; otherwise
            return ``".*"`` as a safe match-all fallback.
@@ -241,6 +281,13 @@ class RegexConstrainedDecoder(BaseModel):
             )
             current_partial += best_text
             rolling_ids.append(best_tid)
+
+            # Repetition guard: if the output ends with an immediately
+            # doubled segment whose first half is a valid complete regex,
+            # the model is looping — return the non-repeated prefix now.
+            repeated = self._detect_trailing_repetition(current_partial)
+            if repeated is not None:
+                return repeated
 
         # Post-loop: strip BPE leading/trailing whitespace and return when
         # the result is a valid complete regex.
