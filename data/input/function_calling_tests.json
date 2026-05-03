@@ -40,5 +40,62 @@
   },
   {
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'"
+  }, 
+  {
+    "prompt": "Replace all email addresses in \"Contact alice@example.com or bob.smith@domain.org today\" with [EMAIL]"
+  },
+  {
+    "prompt": "Replace all phone numbers in 'Call +1 415-555-2671 or 212.333.4444 now' with PHONE"
+  },
+  {
+    "prompt": "Replace all zip codes in 'Ship to 94105 and 10001-1234' with ZIP"
+  },
+  {
+    "prompt": "Replace all dates in 'Deadlines: 2026-05-03 and 2024/12/31' with DATE"
+  },
+  {
+    "prompt": "Replace all times in 'Start at 09:30 and end at 18:45:59' with TIME"
+  },
+  {
+    "prompt": "Replace duplicate words in 'this this is is only only a a test' with DUP"
+  },
+  {
+    "prompt": "Replace all e-mail addresses in 'Primary: jane.doe+qa@company.com, backup: jd_2@foo.co' with EMAIL"
+  },
+  {
+    "prompt": "Replace all US and international phone numbers in 'Office +44 20 7946 0958, mobile +1 650-555-1000' with PHONE"
+  },
+  {
+    "prompt": "Replace all unformatted phone numbers in '4155552671 and 2123334444 are legacy' with PHONE"
+  },
+  {
+    "prompt": "Replace all social security numbers with dashes in 'Valid: 123-45-6789, Another: 555-12-2222' with SSN"
+  },
+  {
+    "prompt": "Replace all social security numbers without dashes in '123456789 and 555122222 appear here' with SSN"
+  },
+  {
+    "prompt": "Replace all dates in MM-dd-YYYY format in '05-03-2026 and 12/31/2024 are listed' with DATE"
+  },
+  {
+    "prompt": "Replace all dates in dd-MM-YYYY format in '03-05-2026 and 31/12/2024 are listed' with DATE"
+  },
+  {
+    "prompt": "Replace all 12-hour times with AM PM in 'Meeting at 9:05 AM and dinner at 07:45 pm' with TIME"
+  },
+  {
+    "prompt": "Replace all decimal numbers in 'Prices are 12.50, .99, and 100.0 today' with DECIMAL"
+  },
+  {
+    "prompt": "Replace all signed whole and decimal numbers in 'Values: -2, +7, -3.14, +0.5' with NUM"
+  },
+  {
+    "prompt": "Replace all alphanumeric tokens with spaces in 'Room A12 B7 and Floor 3 West Wing' with TOKEN"
+  },
+  {
+    "prompt": "Replace all alphanumeric tokens without spaces in 'AB12 ZX90 code_77' with TOKEN"
+  },
+  {
+    "prompt": "Replace all US postal codes in 'Ship to 30301, 02139-4307, and 60614' with ZIP"
   }
 ]
