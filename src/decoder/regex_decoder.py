@@ -22,11 +22,14 @@ from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 
 from llm_sdk import Small_LLM_Model
 
-from .extractors.regex import RegexParameterExtractor
 from .regex_token_validator import RegexTokenValidator
 
 # Template used to frame the user prompt for the regex generation pass.
 # The raw *prompt* is injected at ``{prompt}``.
+#
+# A brief syntax reference is included so the model can produce richer
+# patterns without needing the examples to be in its context window from
+# training alone.
 #
 # Important: do NOT use XML-like tags (e.g. <instruction>, <question>) here.
 # Qwen3-0.6B generates closing XML tags (e.g. " </regex") when the prompt
@@ -34,7 +37,18 @@ from .regex_token_validator import RegexTokenValidator
 # Those closing-tag strings are technically valid Python regexes (they match
 # the literal characters) so the validator would accept them — producing
 # useless output.  A plain-text prompt avoids this entirely.
-_PROMPT_TEMPLATE = "Task: {prompt}\nRegex: "
+_PROMPT_TEMPLATE = (
+    "Regex syntax reference:\n"
+    "  character class : [aeiou], [a-z], [0-9], [A-Za-z]\n"
+    "  negated class   : [^aeiou], [^0-9]\n"
+    "  shorthand       : \\d digit, \\w word char, \\s whitespace\n"
+    "  quantifiers     : * zero-or-more, + one-or-more, ? optional,"
+    " {{n}} exactly n, {{n,m}} between n and m\n"
+    "  anchors         : ^ start, $ end\n"
+    "  groups/alts     : (ab), (a|b), (?:non-capturing)\n"
+    "Task: {prompt}\n"
+    "Regex: "
+)
 
 __all__ = ["RegexConstrainedDecoder"]
 
@@ -115,23 +129,6 @@ class RegexConstrainedDecoder(BaseModel):
         top_ids: list[int] = np.argsort(arr)[-k:][::-1].tolist()
         return top_ids
 
-    def _fallback(self, prompt: str) -> str:
-        """Return the best candidate from the keyword-based extractor.
-
-        Used when constrained generation fails to produce a valid regex.
-
-        Args:
-            prompt: The raw user prompt.
-
-        Returns:
-            The highest-priority regex candidate from
-            :class:`~src.decoder.extractors.regex.RegexParameterExtractor`,
-            or ``".*"`` if the extractor yields nothing.
-        """
-        extractor = RegexParameterExtractor()
-        candidates = list(extractor.extract_candidates(prompt))
-        return candidates[0] if candidates else ".*"
-
     def generate_regex(self, prompt: str) -> str:
         """Generate a valid regex string for the intent in *prompt*.
 
@@ -152,14 +149,14 @@ class RegexConstrainedDecoder(BaseModel):
               immediately.
            f. If no continuations pass, expand the search window to
               ``2 * top_k`` and retry once.  If still none, return the
-              current partial when valid, otherwise fall back to the
-              keyword extractor.
+              current partial when valid, otherwise return ``".*"`` as a
+              safe match-all fallback.
            g. Select the highest-logit passing continuation, append its
               text to *current_partial*, and append its ID to the
               rolling context.
 
         3. After the loop, return *current_partial* when valid; otherwise
-           fall back to the keyword extractor.
+           return ``".*"`` as a safe match-all fallback.
 
         Args:
             prompt: The raw user prompt describing the regex intent.
@@ -236,7 +233,7 @@ class RegexConstrainedDecoder(BaseModel):
                         stripped
                     ):
                         return stripped
-                    return self._fallback(prompt)
+                    return ".*"
 
             # Select the continuation with the highest logit score.
             best_tid, best_text, _ = max(
@@ -252,4 +249,4 @@ class RegexConstrainedDecoder(BaseModel):
             current_partial
         ):
             return current_partial
-        return self._fallback(prompt)
+        return ".*"

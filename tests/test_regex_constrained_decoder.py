@@ -193,9 +193,9 @@ class TestInvalidTokensSkipped:
 class TestFallbackBehaviour:
     """Verify graceful degradation when the LLM cannot produce a valid regex."""
 
-    def test_fallback_returns_a_valid_regex_string(self) -> None:
+    def test_fallback_returns_match_all_regex(self) -> None:
         # Simulate a broken LLM that always returns zero logits →
-        # no continuation will ever be selected → fallback kicks in.
+        # no continuation will ever be selected → safe fallback kicks in.
         llm = MagicMock()
 
         def zero_encode(text: str) -> MagicMock:
@@ -208,7 +208,7 @@ class TestFallbackBehaviour:
 
         def zero_decode(ids: list[int]) -> str:
             # Return newline for all tokens → stop signal immediately,
-            # but current_partial is empty → fallback.
+            # but current_partial is empty → ".*" fallback.
             return "\n"
 
         def zero_logits(prefix_ids: list[int]) -> list[float]:
@@ -222,6 +222,7 @@ class TestFallbackBehaviour:
         result = decoder.generate_regex("replace all digits")
         # The fallback must produce a compilable regex.
         assert re.compile(result) is not None
+        assert result == ".*"
 
 
 class TestConfigurableParameters:
