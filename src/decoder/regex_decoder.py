@@ -44,8 +44,11 @@ _PROMPT_TEMPLATE = (
     "  shorthand       : \\d digit, \\w word char, \\s whitespace\n"
     "  quantifiers     : * zero-or-more, + one-or-more, ? optional,"
     " {{n}} exactly n, {{n,m}} between n and m\n"
-    "  anchors         : ^ start, $ end\n"
+    "  anchors         : ^ start, $ end, \\b word boundary\n"
     "  groups/alts     : (ab), (a|b), (?:non-capturing)\n"
+    "  lookahead       : (?=pattern) positive, (?!pattern) negative\n"
+    "  lookbehind      : (?<=pattern) positive, (?<!pattern) negative\n"
+    "  backreference   : \\1 first group, \\2 second group\n"
     "Task: {prompt}\n"
     "Regex: "
 )

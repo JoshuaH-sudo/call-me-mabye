@@ -275,6 +275,37 @@ class TestTrailingRepetitionDetection:
         assert decoder._detect_trailing_repetition("[a-z][A-Z]") is None
 
 
+class TestLookaheadAndBackreferenceGeneration:
+    """Verify that lookahead and backreference patterns can be generated."""
+
+    def test_positive_lookahead_compiles(self) -> None:
+        # Mock drives toward a simple positive lookahead.
+        llm = _make_regex_llm_mock(r"(?=\d)")
+        decoder = RegexConstrainedDecoder(llm=llm)
+        result = decoder.generate_regex("position before a digit")
+        assert re.compile(result) is not None
+
+    def test_negative_lookahead_compiles(self) -> None:
+        llm = _make_regex_llm_mock(r"(?!\d)")
+        decoder = RegexConstrainedDecoder(llm=llm)
+        result = decoder.generate_regex("position not before a digit")
+        assert re.compile(result) is not None
+
+    def test_duplicate_word_pattern_generated(self) -> None:
+        # The canonical duplicate-word pattern uses a capturing group
+        # with a positive lookahead and a backreference.  The validator
+        # must accept every prefix so the decoder can generate it fully.
+        target = r"\b(\w+)\b(?=.*\b\1\b)"
+        llm = _make_regex_llm_mock(target)
+        decoder = RegexConstrainedDecoder(llm=llm)
+        result = decoder.generate_regex("find duplicate words")
+        assert result == target
+        # Confirm the pattern actually matches duplicate words.
+        assert re.search(result, "the cat sat on the mat") is not None
+        assert re.search(result, "one two one") is not None
+        assert re.search(result, "no repeats here") is None
+
+
 class TestRepetitionGuardIntegration:
     """Verify the repetition guard fires during generate_regex."""
 

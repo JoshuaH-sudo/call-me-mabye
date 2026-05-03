@@ -135,6 +135,48 @@ class TestIsValidRegexPrefix:
         # A plain word is a valid regex literal.
         assert validator.is_valid_regex_prefix("cat") is True
 
+    def test_open_special_group_is_valid_prefix(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # "(?" is the start of a special group (?=, ?!, ?:, ?<= …);
+        # it must be recognised as a recoverable prefix.
+        assert validator.is_valid_regex_prefix("(?") is True
+
+    def test_positive_lookahead_prefix_is_valid(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # "(?=" is the start of a positive lookahead.
+        assert validator.is_valid_regex_prefix("(?=") is True
+
+    def test_negative_lookahead_prefix_is_valid(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # "(?!" is the start of a negative lookahead.
+        assert validator.is_valid_regex_prefix("(?!") is True
+
+    def test_positive_lookbehind_prefix_is_valid(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # "(?<=" is the start of a positive lookbehind.
+        assert validator.is_valid_regex_prefix("(?<=") is True
+
+    def test_negative_lookbehind_prefix_is_valid(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # "(?<!" is the start of a negative lookbehind.
+        assert validator.is_valid_regex_prefix("(?<!") is True
+
+    def test_full_lookahead_pattern_all_prefixes_valid(
+        self, validator: RegexTokenValidator
+    ) -> None:
+        # Every prefix of the duplicate-word pattern must be a valid
+        # regex prefix so the constrained decoder can generate it.
+        pattern = r"\b(\w+)\b(?=.*\b\1\b)"
+        for i in range(1, len(pattern)):
+            assert validator.is_valid_regex_prefix(pattern[:i]), (
+                f"Prefix rejected at index {i}: {repr(pattern[:i])}"
+            )
+
 
 class TestFilterToValidContinuations:
     """Tests for RegexTokenValidator.filter_to_valid_continuations."""

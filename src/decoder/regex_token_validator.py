@@ -29,6 +29,16 @@ _COMPLETION_ATTEMPTS: list[str] = [
     ")?",     # optional group close
     "]?",     # optional char-class close
     "]+",     # one-or-more char-class close
+    # Lookahead / lookbehind group completions.
+    # The prefix "(?" is not completable by any of the suffixes above
+    # because "(?" + ")" = "(?)" which Python's re rejects.  These
+    # additional suffixes rescue "(?" (and the lookahead/lookbehind
+    # variants that follow it) so that the constrained decoder can
+    # generate patterns such as (?=...), (?!...), (?<=...), (?<!...).
+    "=)",     # positive lookahead  : (?=)
+    ":)",     # non-capturing group : (?:)
+    "=a)",    # positive lookahead with content : (?=a) and (?<=a)
+    "!a)",    # negative lookahead with content : (?!a) and (?<!a)
 ]
 
 __all__ = ["RegexTokenValidator"]
