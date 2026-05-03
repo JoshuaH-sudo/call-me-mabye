@@ -1,5 +1,14 @@
 [
   {
+    "prompt": "replace duplicate words with * in 'Hello world how ya doing Hello world'",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": " ^[a-z]+[a-z] (?:\\s+)?[a-z]+",
+      "replacement": "*",
+      "source_string": "Hello world how ya doing Hello world"
+    }
+  },
+  {
     "prompt": "say hello to Diana!",
     "name": "fn_greet",
     "parameters": {
@@ -90,7 +99,7 @@
     "prompt": "Replace all vowels in 'Programming is fun' with asterisks",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "[aeiouAEIOU]",
+      "regex": ".*",
       "replacement": "*",
       "source_string": "Programming is fun"
     }
@@ -99,9 +108,61 @@
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "cat",
+      "regex": " (?:cat|dog) ?",
       "replacement": "dog",
       "source_string": "The cat sat on the mat with another cat"
+    }
+  },
+  {
+    "prompt": "Replace all digits in 'abc123def456' with X",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": "\\d",
+      "replacement": "X",
+      "source_string": "abc123def456"
+    }
+  },
+  {
+    "prompt": "Remove all letters from 'a1b2c3d4'",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": " \\d+",
+      "replacement": "a1b2c3d4",
+      "source_string": "a1b2c3d4"
+    }
+  },
+  {
+    "prompt": "Split on all words in 'hello world foo'",
+    "name": "fn_reverse_string",
+    "parameters": {
+      "s": "hello world foo"
+    }
+  },
+  {
+    "prompt": "Replace all uppercase letters in 'Hello World' with *",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": " ^[A-Z][a-z]*",
+      "replacement": "*",
+      "source_string": "Hello World"
+    }
+  },
+  {
+    "prompt": "Replace all lowercase letters in 'Hello World' with _",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": " ^[a-z]+[A-Z]+",
+      "replacement": "_",
+      "source_string": "Hello World"
+    }
+  },
+  {
+    "prompt": "Substitute the pattern 'foo' with 'bar' in 'foo baz foo'",
+    "name": "fn_substitute_string_with_regex",
+    "parameters": {
+      "regex": "^foo baz foo$",
+      "replacement": "bar",
+      "source_string": "foo baz foo"
     }
   }
 ]

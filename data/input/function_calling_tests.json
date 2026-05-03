@@ -1,5 +1,8 @@
 [
   {
+    "prompt": "replace duplicate words with * in 'Hello world how ya doing Hello world'"
+  },
+  {
     "prompt": "say hello to Diana!"
   },
   {
@@ -40,5 +43,23 @@
   },
   {
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'"
+  },
+  {
+    "prompt": "Replace all digits in 'abc123def456' with X"
+  },
+  {
+    "prompt": "Remove all letters from 'a1b2c3d4'"
+  },
+  {
+    "prompt": "Split on all words in 'hello world foo'"
+  },
+  {
+    "prompt": "Replace all uppercase letters in 'Hello World' with *"
+  },
+  {
+    "prompt": "Replace all lowercase letters in 'Hello World' with _"
+  },
+  {
+    "prompt": "Substitute the pattern 'foo' with 'bar' in 'foo baz foo'"
   }
 ]

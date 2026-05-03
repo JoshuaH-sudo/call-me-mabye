@@ -19,14 +19,21 @@ Design notes
 * When all parameters are numeric, a *sliding-window* strategy is used
   instead of a cross-product to preserve the natural left-to-right ordering
   of numbers mentioned in the prompt.
+* ``regex``-typed parameters are always extracted by
+  :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder` when an LLM
+  is provided (deferred import to avoid loading torch in schema-only
+  contexts).  When no LLM is available the safe match-all ``".*"`` is used
+  as a placeholder.
 """
 
 import json
 import re
+from typing import TYPE_CHECKING
+
+from src.decoder.regex_decoder import RegexConstrainedDecoder
 
 from .models import FunctionDefinition, ParameterDefinition
 from .extractors.number import NumberParameterExtractor
-from .extractors.regex import RegexParameterExtractor
 from .extractors.string import StringParameterExtractor
 from .types import (
     OutputCandidate,
@@ -35,6 +42,12 @@ from .types import (
     ParameterValues,
     ParameterValueSpace,
 )
+
+if TYPE_CHECKING:
+    # Imported here only to satisfy type checkers; the actual import is
+    # deferred to __init__ to avoid loading the LLM stack when
+    # CandidateBuilder is used without a model.
+    from llm_sdk import Small_LLM_Model
 
 # Words that carry no semantic signal for function selection.
 _STOPWORDS = {
@@ -143,18 +156,34 @@ class CandidateBuilder:
     """Builds compact JSON function-call candidates from function schemas.
 
     Coordinates parameter extraction and JSON candidate generation.
-    Delegates extraction logic to three specialised extractor classes:
+    Delegates extraction logic to two specialised extractor classes:
 
     * :class:`~src.decoder.extractors.string.StringParameterExtractor`
     * :class:`~src.decoder.extractors.number.NumberParameterExtractor`
-    * :class:`~src.decoder.extractors.regex.RegexParameterExtractor`
+
+    ``regex``-named parameters are always handled by
+    :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder` when an
+    LLM is provided at construction time.  When no LLM is available the
+    safe match-all ``".*"`` is used as a placeholder.
     """
 
-    def __init__(self) -> None:
-        """Instantiate all three parameter extractors."""
+    def __init__(
+        self,
+        llm: "Small_LLM_Model | None",
+    ) -> None:
+        """Instantiate the parameter extractors.
+
+        Args:
+            llm: Optional language model.  When provided, a
+                :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder`
+                is created and used for ``regex``-named parameters.
+                When ``None``, ``".*"`` is returned as a safe placeholder.
+        """
         self.string_extractor = StringParameterExtractor()
         self.number_extractor = NumberParameterExtractor()
-        self.regex_extractor = RegexParameterExtractor()
+        self._regex_decoder = (
+            RegexConstrainedDecoder(llm=llm) if llm is not None else None
+        )
 
     def _default_parameter_value(self, parameter_type: str) -> object:
         """Return the safe fallback value for *parameter_type*.
@@ -192,8 +221,8 @@ class CandidateBuilder:
         Dispatch rules (checked in order):
 
         1. If *parameter_name* is ``"regex"``, use
-           :class:`~src.decoder.extractors.regex.RegexParameterExtractor`
-           regardless of the declared type.
+           :class:`~src.decoder.regex_decoder.RegexConstrainedDecoder`
+           when an LLM is available; otherwise return ``[".*"]``.
         2. If *parameter_definition.type* is ``"string"``, use
            :class:`~src.decoder.extractors.string.StringParameterExtractor`.
         3. If *parameter_definition.type* is ``"number"``, use
@@ -213,7 +242,10 @@ class CandidateBuilder:
             A list of candidate values ordered by extraction priority.
         """
         if parameter_name == "regex":
-            return list(self.regex_extractor.extract_candidates(prompt))
+            if self._regex_decoder is not None:
+                return [self._regex_decoder.generate_regex(prompt)]
+            # No LLM available — return a safe match-all placeholder.
+            return [".*"]
         if parameter_definition.type == "string":
             return list(
                 self.string_extractor.extract_candidates(

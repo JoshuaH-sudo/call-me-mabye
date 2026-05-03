@@ -93,7 +93,7 @@ class ConstrainedDecoder:
         self.llm = llm
         self.available_functions = available_functions
         self.debug = debug
-        self.candidate_builder = CandidateBuilder()
+        self.candidate_builder = CandidateBuilder(llm=llm)
         self.prefix_matcher = PrefixMatcher()
         self.token_selector = TokenSelector(llm=llm)
 
