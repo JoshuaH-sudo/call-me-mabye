@@ -30,6 +30,8 @@ import json
 import re
 from typing import TYPE_CHECKING
 
+from src.decoder.regex_decoder import RegexConstrainedDecoder
+
 from .models import FunctionDefinition, ParameterDefinition
 from .extractors.number import NumberParameterExtractor
 from .extractors.string import StringParameterExtractor
@@ -167,7 +169,7 @@ class CandidateBuilder:
 
     def __init__(
         self,
-        llm: "Small_LLM_Model | None" = None,
+        llm: "Small_LLM_Model | None",
     ) -> None:
         """Instantiate the parameter extractors.
 
@@ -179,12 +181,9 @@ class CandidateBuilder:
         """
         self.string_extractor = StringParameterExtractor()
         self.number_extractor = NumberParameterExtractor()
-        self._regex_decoder: "RegexConstrainedDecoder | None" = None
-        if llm is not None:
-            # Deferred import to avoid loading torch/llm_sdk when this
-            # class is used without a model (e.g. schema-only tooling).
-            from .regex_decoder import RegexConstrainedDecoder
-            self._regex_decoder = RegexConstrainedDecoder(llm=llm)
+        self._regex_decoder = (
+            RegexConstrainedDecoder(llm=llm) if llm is not None else None
+        )
 
     def _default_parameter_value(self, parameter_type: str) -> object:
         """Return the safe fallback value for *parameter_type*.
