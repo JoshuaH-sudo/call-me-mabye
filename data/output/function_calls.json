@@ -1,11 +1,11 @@
 [
   {
-    "prompt": "replace all groups of whitespace in 'Hello world how ya doing' with underscores",
+    "prompt": "replace duplicate words with * in 'Hello world how ya doing Hello world'",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "\\s+",
-      "replacement": "underscores",
-      "source_string": "Hello world how ya doing"
+      "regex": "\\w+",
+      "replacement": "*",
+      "source_string": "Hello world how ya doing Hello world"
     }
   },
   {

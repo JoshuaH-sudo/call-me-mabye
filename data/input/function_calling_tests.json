@@ -1,6 +1,6 @@
 [
   {
-    "prompt": "replace all groups of whitespace in 'Hello world how ya doing' with underscores"
+    "prompt": "replace duplicate words with * in 'Hello world how ya doing Hello world'"
   },
   {
     "prompt": "say hello to Diana!"
