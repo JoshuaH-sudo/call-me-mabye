@@ -3,7 +3,7 @@
     "prompt": "replace all groups of whitespace in 'Hello world how ya doing' with underscores",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "[^_]+",
+      "regex": "\\s+",
       "replacement": "underscores",
       "source_string": "Hello world how ya doing"
     }
@@ -108,7 +108,7 @@
     "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "/cat/ g",
+      "regex": "cat",
       "replacement": "dog",
       "source_string": "The cat sat on the mat with another cat"
     }
@@ -117,7 +117,7 @@
     "prompt": "Replace all digits in 'abc123def456' with X",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "123456",
+      "regex": "\\d+",
       "replacement": "X",
       "source_string": "abc123def456"
     }
@@ -126,7 +126,7 @@
     "prompt": "Remove all letters from 'a1b2c3d4'",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "^[a-zA-Z0-9]+",
+      "regex": "[a-zA-Z]+",
       "replacement": "a1b2c3d4",
       "source_string": "a1b2c3d4"
     }
@@ -142,7 +142,7 @@
     "prompt": "Replace all uppercase letters in 'Hello World' with *",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "^[A-Z][a-z]*$",
+      "regex": "[A-Z]+",
       "replacement": "*",
       "source_string": "Hello World"
     }
@@ -151,7 +151,7 @@
     "prompt": "Replace all lowercase letters in 'Hello World' with _",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "[a-z] (?:\\s+)? [a-z] (?:\\s+)? [a-z] (?:\\s+)? [a-z] (?:\\s+)? [a-z] (?:\\s+)?",
+      "regex": "[a-z]+",
       "replacement": "_",
       "source_string": "Hello World"
     }
@@ -160,7 +160,7 @@
     "prompt": "Substitute the pattern 'foo' with 'bar' in 'foo baz foo'",
     "name": "fn_substitute_string_with_regex",
     "parameters": {
-      "regex": "foo baz foo",
+      "regex": "foo",
       "replacement": "bar",
       "source_string": "foo baz foo"
     }
