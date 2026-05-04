@@ -29,6 +29,30 @@ from .models.validation import validate_function_payload
 from .prompt.builder import PromptContextBuilder
 
 
+_RED_BOLD = "\033[1;31m"
+_RESET = "\033[0m"
+
+
+def _print_pretty_error(message: str) -> None:
+    """Render a visible, user-friendly error block in the terminal."""
+    header = "[!] Pipeline Error"
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        lines = ["unknown error"]
+
+    width = max(len(header), *(len(line) for line in lines))
+    border = "+-" + ("-" * width) + "-+"
+    separator = "| " + ("-" * width) + " |"
+    content = [f"| {header.ljust(width)} |", separator]
+    content.extend(f"| {line.ljust(width)} |" for line in lines)
+    block = "\n".join([border, *content, border])
+
+    if sys.stdout.isatty():
+        print(f"{_RED_BOLD}{block}{_RESET}")
+        return
+    print(block)
+
+
 def build_function_index(
     functions: list[FunctionDefinition],
 ) -> dict[str, FunctionDefinition]:
@@ -76,7 +100,7 @@ def main() -> int:
     try:
         paths = parse_args(sys.argv[1:])
     except RuntimeError as exc:
-        print(f"Error: {exc}")
+        _print_pretty_error(str(exc))
         return 1
 
     loader = DatasetFileLoader(paths=paths)
@@ -88,7 +112,7 @@ def main() -> int:
         # Build the name → definition index once so per-prompt lookup is O(1).
         function_index = build_function_index(functions)
     except RuntimeError as exc:
-        print(f"Error: {exc}")
+        _print_pretty_error(str(exc))
         return 1
 
     # --- Step 3: initialise model and decoder --------------------------------
@@ -154,13 +178,13 @@ def main() -> int:
                 )
             )
     except (RuntimeError, json.JSONDecodeError) as exc:
-        print(f"Error: {exc}")
+        _print_pretty_error(str(exc))
         return 1
 
     # --- Step 5: write output ------------------------------------------------
     try:
         output_results(paths.output_file, generated_results)
     except RuntimeError as exc:
-        print(f"Error: {exc}")
+        _print_pretty_error(str(exc))
         return 1
     return 0

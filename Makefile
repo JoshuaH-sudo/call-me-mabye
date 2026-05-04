@@ -1,6 +1,6 @@
 PYTHON := uv run python
 
-.PHONY: install run debug clean lint lint-strict
+.PHONY: install run debug test clean lint lint-strict
 
 .venv:
 	uv venv .venv
@@ -20,6 +20,9 @@ debug: .venv
 		--input data/input/function_calling_tests.json \
 		--output data/output/function_calls.json \
 		--debug
+
+test: .venv
+	$(PYTHON) -m pytest -q
 
 clean:
 	find . \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache -o -name .ruff_cache \) -type d -prune -exec rm -rf {} +
