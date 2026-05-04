@@ -23,7 +23,7 @@ from .cli.args import parse_args
 from .decoder.models import FunctionDefinition
 from .decoder.constrained_decoder import ConstrainedDecoder
 from .io.loader import DatasetFileLoader
-from .io.writer import output_results
+from .io.writer import ensure_output_writable, output_results
 from .models.function_call import FunctionCallResult
 from .models.validation import validate_function_payload
 from .prompt.builder import PromptContextBuilder
@@ -105,7 +105,14 @@ def main() -> int:
 
     loader = DatasetFileLoader(paths=paths)
 
-    # --- Step 2: load dataset files from disk --------------------------------
+    # --- Step 2: fail fast on output permission/path errors ------------------
+    try:
+        ensure_output_writable(paths.output_file)
+    except RuntimeError as exc:
+        _print_pretty_error(str(exc))
+        return 1
+
+    # --- Step 3: load dataset files from disk --------------------------------
     try:
         functions = loader.load_functions()
         prompts = loader.load_prompts()
@@ -115,14 +122,14 @@ def main() -> int:
         _print_pretty_error(str(exc))
         return 1
 
-    # --- Step 3: initialise model and decoder --------------------------------
+    # --- Step 4: initialise model and decoder --------------------------------
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(
         available_functions=functions, llm=llm, debug=paths.debug
     )
     prompt_builder = PromptContextBuilder()
 
-    # --- Step 4: decode each prompt ------------------------------------------
+    # --- Step 5: decode each prompt ------------------------------------------
     #
     # End-to-end output assembly per prompt:
     #   prompt text
@@ -181,7 +188,7 @@ def main() -> int:
         _print_pretty_error(str(exc))
         return 1
 
-    # --- Step 5: write output ------------------------------------------------
+    # --- Step 6: write output ------------------------------------------------
     try:
         output_results(paths.output_file, generated_results)
     except RuntimeError as exc:

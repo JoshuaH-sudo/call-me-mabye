@@ -5,9 +5,60 @@ written as a pretty-printed JSON array so that it is easy to read and
 diff in version control.
 """
 import json
+import tempfile
 from pathlib import Path
 
 from ..models.function_call import FunctionCallResult
+
+
+def ensure_output_writable(output_file: Path) -> None:
+    """Fail fast if the output destination is not writable.
+
+    This preflight check is intentionally separate from ``output_results`` so
+    the application can surface permission issues before doing model work.
+
+    Args:
+        output_file: Destination path for the final JSON output.
+
+    Raises:
+        RuntimeError: If the output file cannot be created/written, the
+            destination directory cannot be created, or the destination path
+            is not a regular file.
+    """
+    try:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"unable to prepare output directory {output_file.parent}: {exc}"
+        ) from exc
+
+    if output_file.exists():
+        if not output_file.is_file():
+            raise RuntimeError(
+                f"output path is not a regular file: {output_file}"
+            )
+        try:
+            with output_file.open("a", encoding="utf-8"):
+                pass
+            return
+        except OSError as exc:
+            raise RuntimeError(
+                f"output file is not writable: {output_file}: {exc}"
+            ) from exc
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output_file.parent,
+            prefix=".cmm-write-check-",
+            delete=True,
+        ):
+            pass
+    except OSError as exc:
+        raise RuntimeError(
+            f"output directory is not writable: {output_file.parent}: {exc}"
+        ) from exc
 
 
 def output_results(
