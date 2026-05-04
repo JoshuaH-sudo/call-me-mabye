@@ -109,6 +109,9 @@ def main() -> int:
     generated_results: list[FunctionCallResult] = []
     try:
         for prompt_case in prompts:
+            if not prompt_case.prompt.strip():
+                continue
+
             # Tokenise the raw prompt so the decoder can use it as a
             # fallback prefix when querying model logits.
             encoded_prompt = llm.encode(prompt_case.prompt)

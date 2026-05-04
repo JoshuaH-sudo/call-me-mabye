@@ -1,0 +1,115 @@
+"""Shared keyword lists used across decoder extractors/builders."""
+
+# Common stopwords removed from prompt tokenization for ranking and generic
+# string candidate extraction.
+STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "should",
+        "could",
+        "can",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "as",
+        "if",
+    }
+)
+
+# Prompt words that are structural commands and rarely intended as literal
+# string arguments.
+IMPERATIVE_STRUCTURAL_WORDS: frozenset[str] = frozenset(
+    {
+        "greet",
+        "reverse",
+        "say",
+        "hello",
+        "calculate",
+        "compute",
+        "find",
+        "replace",
+        "substitute",
+        "what",
+        "which",
+        "string",
+        "number",
+        "result",
+        "value",
+        "get",
+        "give",
+        "tell",
+        "show",
+        "please",
+        "print",
+    }
+)
+
+# Words that indicate an instruction/question segment likely contains
+# the operative numeric arguments.
+QUESTION_INTENT_WORDS: frozenset[str] = frozenset(
+    {
+        "what",
+        "which",
+        "how",
+        "calculate",
+        "compute",
+        "find",
+        "evaluate",
+        "determine",
+        "solve",
+        "sum",
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+    }
+)

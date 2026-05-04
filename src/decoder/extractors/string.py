@@ -14,10 +14,16 @@ in the following priority order:
 4. **Bare content words** — all non-stopword tokens from the prompt are added
    as lower-priority candidates.  Structural/imperative words (e.g. "Greet",
    "Reverse") and tokens derived from the active function name are excluded.
-5. **Empty string fallback** — if nothing else is found, ``""`` is returned
+5. **Path candidates** — strings that look like file paths (e.g.
+    "/home/user/file.txt", "data.csv") are extracted as candidates because
+    they are common in prompts
+   and unlikely to be confused with other types of arguments.
+6. **Empty string fallback** — if nothing else is found, ``""`` is returned
    to ensure the candidate list is never empty.
 """
 import re
+
+from .shared_keywords import IMPERATIVE_STRUCTURAL_WORDS, STOPWORDS
 
 # Maps verbose symbol descriptions (as they might appear in a prompt) to
 # the corresponding single-character symbol.  Used when extracting the
@@ -69,35 +75,7 @@ SYMBOL_ALIASES: dict[str, str] = {
     "right brace": "}",
 }
 
-# Words that are structurally part of function-invocation prompts but are
-# never the actual argument value the function should receive.  These are
-# imperative verb forms and meta-nouns that the StringParameterExtractor
-# must exclude from bare-word candidate generation.
-_IMPERATIVE_STRUCTURAL_WORDS: frozenset[str] = frozenset(
-    {
-        "greet",
-        "reverse",
-        "say",
-        "hello",
-        "calculate",
-        "compute",
-        "find",
-        "replace",
-        "substitute",
-        "what",
-        "which",
-        "string",
-        "number",
-        "result",
-        "value",
-        "get",
-        "give",
-        "tell",
-        "show",
-        "please",
-        "print",
-    }
-)
+_IMPERATIVE_STRUCTURAL_WORDS = IMPERATIVE_STRUCTURAL_WORDS
 
 
 def _build_function_name_exclusions(function_name: str) -> frozenset[str]:
@@ -121,6 +99,17 @@ def _build_function_name_exclusions(function_name: str) -> frozenset[str]:
 class StringParameterExtractor:
     """Extracts string parameter candidates from a user prompt."""
 
+    def _unescape_quoted_text(self, value: str) -> str:
+        """Interpret common escaped sequences from quoted prompt text."""
+        return (
+            value.replace(r"\\", "\\")
+            .replace(r"\"", '"')
+            .replace(r"\'", "'")
+            .replace(r"\n", "\n")
+            .replace(r"\t", "\t")
+            .replace(r"\r", "\r")
+        )
+
     def _extract_quoted_strings(self, prompt: str) -> list[str]:
         """Return non-empty strings found inside single or double quotes.
 
@@ -131,13 +120,70 @@ class StringParameterExtractor:
             A deduplicated list of quoted contents in appearance order.
         """
         quoted: list[str] = []
-        quoted_matches = re.findall(r'"([^"\\]+)"|\'([^\'\\]+)\'', prompt)
+        quoted_matches = re.findall(
+            r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'',
+            prompt,
+        )
         for left, right in quoted_matches:
             value = left if left else right
-            cleaned = value.strip()
+            cleaned = self._unescape_quoted_text(value.strip())
             if cleaned and cleaned not in quoted:
                 quoted.append(cleaned)
         return quoted
+
+    def _extract_database_candidates(self, prompt: str) -> list[str]:
+        """Extract database names from phrases like "on the X database"."""
+        candidates: list[str] = []
+        for match in re.finditer(
+            r"\bon\s+the\s+([A-Za-z0-9_-]+)\s+database\b",
+            prompt,
+            flags=re.IGNORECASE,
+        ):
+            value = match.group(1).strip()
+            if value and value not in candidates:
+                candidates.append(value)
+        return candidates
+
+    def _extract_query_candidates(self, prompt: str) -> list[str]:
+        """Extract SQL query candidates, prioritising quoted SQL text."""
+        quoted = self._extract_quoted_strings(prompt)
+        if not quoted:
+            return []
+        longest = max(quoted, key=len)
+        return [longest]
+
+    def _extract_encoding_candidates(self, prompt: str) -> list[str]:
+        """Extract encodings from phrases like "with utf-8 encoding"."""
+        candidates: list[str] = []
+        for match in re.finditer(
+            r"\bwith\s+([A-Za-z0-9._-]+)\s+encoding\b",
+            prompt,
+            flags=re.IGNORECASE,
+        ):
+            value = match.group(1).strip()
+            if value and value not in candidates:
+                candidates.append(value)
+        return candidates
+
+    def _extract_template_candidates(self, prompt: str) -> list[str]:
+        """Extract the full template payload after "format template:"."""
+        match = re.search(
+            r"\bformat\s+template\s*:\s*(.+)$",
+            prompt,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return []
+        value = match.group(1).strip()
+        if not value:
+            return []
+        return [value]
+
+    def _clean_path_candidate(self, value: str) -> str:
+        """Trim wrappers and punctuation around an extracted path."""
+        cleaned = value.strip().strip('"\'')
+        cleaned = cleaned.rstrip(".,;:!?")
+        return cleaned
 
     def _extract_replacement_candidates(self, prompt: str) -> list[str]:
         """Extract replacement-target candidates from a substitution prompt.
@@ -256,6 +302,49 @@ class StringParameterExtractor:
 
         return candidates
 
+    def _extract_path_candidates(self, prompt: str) -> list[str]:
+        """Extract filesystem paths while preserving special characters."""
+        candidates: list[str] = []
+
+        # Prompt-shape specific extraction for read-file style requests.
+        context_match = re.search(
+            (
+                r"\bread\b(?:\s+the\s+file)?\s+"
+                r"(?:at\s+)?(.+?)"
+                r"(?=\s+with\s+[A-Za-z0-9._-]+\s+encoding\b|[.?!]|$)"
+            ),
+            prompt,
+            flags=re.IGNORECASE,
+        )
+        if context_match:
+            value = self._clean_path_candidate(context_match.group(1))
+            if value and value not in candidates:
+                candidates.append(value)
+
+        # Windows drive paths.
+        windows_pattern = re.compile(
+            (
+                r"(?<!\w)([A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n\s]+\\)*"
+                r"[^\\/:*?\"<>|\r\n\s]+)"
+                r"(?=\s+with\s+[A-Za-z0-9._-]+\s+encoding\b|[.?!]|$|\s)"
+            )
+        )
+
+        # Unix absolute and home-relative paths.
+        unix_pattern = re.compile(r"(?<!\w)((?:/|~/)[^\s'\",;:!?]+)")
+
+        for match in windows_pattern.finditer(prompt):
+            value = self._clean_path_candidate(match.group(1))
+            if value and value not in candidates:
+                candidates.append(value)
+
+        for match in unix_pattern.finditer(prompt):
+            value = self._clean_path_candidate(match.group(1))
+            if value and value not in candidates:
+                candidates.append(value)
+
+        return candidates
+
     def extract_candidates(
         self,
         prompt: str,
@@ -270,9 +359,10 @@ class StringParameterExtractor:
            ``"source_string"`` use dedicated extraction helpers).
         2. Proper-noun candidates for ``"name"`` parameters.
         3. Quoted strings (single and double quotes).
-        4. Bare content words (stopwords, imperative/structural words, and
+        4. Path candidates (e.g. "/home/user/file.txt", "data.csv").
+        5. Bare content words (stopwords, imperative/structural words, and
            tokens derived from *function_name* are excluded).
-        5. Empty string ``""`` if nothing else was found.
+        6. Empty string ``""`` if nothing else was found.
 
         Args:
             prompt: The user prompt to extract candidates from.
@@ -293,6 +383,16 @@ class StringParameterExtractor:
             candidates.extend(self._extract_replacement_candidates(prompt))
         elif parameter_name == "source_string":
             candidates.extend(self._extract_source_string_candidates(prompt))
+        elif parameter_name == "database":
+            return self._extract_database_candidates(prompt)
+        elif parameter_name == "query":
+            candidates.extend(self._extract_query_candidates(prompt))
+        elif parameter_name == "encoding":
+            return self._extract_encoding_candidates(prompt)
+        elif parameter_name == "path":
+            return self._extract_path_candidates(prompt)
+        elif parameter_name == "template":
+            return self._extract_template_candidates(prompt)
 
         # Step 2: proper-noun prioritizer for "name" parameters.
         if parameter_name == "name":
@@ -305,74 +405,18 @@ class StringParameterExtractor:
             if quoted not in candidates:
                 candidates.append(quoted)
 
-        # Step 4: bare content words — common stopwords, imperative structural
-        # words, and tokens derived from the active function name are removed.
-        stopwords = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "from",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "have",
-            "has",
-            "had",
-            "do",
-            "does",
-            "did",
-            "will",
-            "would",
-            "should",
-            "could",
-            "can",
-            "may",
-            "might",
-            "must",
-            "shall",
-            "all",
-            "each",
-            "every",
-            "both",
-            "few",
-            "more",
-            "most",
-            "other",
-            "some",
-            "such",
-            "no",
-            "nor",
-            "not",
-            "only",
-            "same",
-            "so",
-            "than",
-            "too",
-            "very",
-            "just",
-            "as",
-            "if",
-        }
+        # Step 4: path candidates (e.g. "/home/user/file.txt", "data.csv").
+        for path in self._extract_path_candidates(prompt):
+            if path not in candidates:
+                candidates.append(path)
 
+        # Step 5: bare content words — common stopwords, imperative structural
+        # words, and tokens derived from the active function name are removed.
         # Build combined exclusion set: stopwords + imperative structural
         # words + tokens derived from the active function name.
         function_exclusions = _build_function_name_exclusions(function_name)
         excluded = (
-            stopwords | _IMPERATIVE_STRUCTURAL_WORDS | function_exclusions
+            STOPWORDS | _IMPERATIVE_STRUCTURAL_WORDS | function_exclusions
         )
 
         # Match whole words, preserving contractions and hyphenated forms.
@@ -381,7 +425,7 @@ class StringParameterExtractor:
             if word.lower() not in excluded and word not in candidates:
                 candidates.append(word)
 
-        # Step 5: final fallback — guarantee at least one candidate so that
+        # Step 6: final fallback — guarantee at least one candidate so that
         # the decoder always has a valid JSON string to constrain against.
         if not candidates:
             candidates.append("")

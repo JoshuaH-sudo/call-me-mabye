@@ -6,7 +6,8 @@ After the constrained decoder emits a JSON string the app must verify that:
 2. The selected function name exists in the loaded function index.
 3. The decoded parameter names exactly match the schema (no missing, no extra).
 4. Every parameter value has the correct Python type for its declared schema
-   type (``"string"`` → ``str``, ``"number"`` → ``int | float``).
+    type (``"string"`` → ``str``, ``"number"`` → ``int | float``,
+    ``"integer"`` → ``int``).
 
 :func:`validate_function_payload` performs all four checks in order and
 raises a descriptive :exc:`RuntimeError` on the first failure so that the
@@ -29,6 +30,7 @@ def is_valid_parameter_value(
     * ``"number"``  → must be an :class:`int` or :class:`float`, but **not**
       a :class:`bool` (JSON booleans deserialize as Python bools which are a
       subclass of ``int``, so the explicit exclusion is necessary).
+        * ``"integer"`` → must be a :class:`int`, but **not** a :class:`bool`.
 
     Args:
         parameter_type: The type string from the function schema.
@@ -46,6 +48,9 @@ def is_valid_parameter_value(
         # Exclude bool explicitly: JSON true/false become Python True/False
         # which are instances of int, but should not be treated as numbers.
         return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if parameter_type == "integer":
+        # Exclude bool explicitly for the same reason as number above.
+        return isinstance(value, int) and not isinstance(value, bool)
     raise RuntimeError(f"unsupported parameter type: {parameter_type}")
 
 

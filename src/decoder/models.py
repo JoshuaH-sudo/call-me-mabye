@@ -13,7 +13,8 @@ class ParameterDefinition(BaseModel):
 
     Attributes:
         type: The parameter's type string as declared in the definitions file.
-            Currently supported values are ``"string"`` and ``"number"``.
+            Currently supported values are ``"string"``, ``"number"``, and
+            ``"integer"``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -25,7 +26,8 @@ class ReturnDefinition(BaseModel):
     """Schema for a function's return value.
 
     Attributes:
-        type: The return type string (e.g. ``"string"``, ``"number"``).
+        type: The return type string (e.g. ``"string"``, ``"number"``,
+            ``"integer"``).
             Not used during decoding but preserved for completeness.
     """
 

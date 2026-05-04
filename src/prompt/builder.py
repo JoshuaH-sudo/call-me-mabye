@@ -26,6 +26,7 @@ from ..decoder.models import FunctionDefinition
 _TYPE_DISPLAY: dict[str, str] = {
     "string": "str",
     "number": "float",
+    "integer": "int",
 }
 
 _INSTRUCTION = (

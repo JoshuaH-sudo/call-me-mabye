@@ -14,23 +14,7 @@ natural reading order of the text.
 """
 import re
 
-# Words that signal the start of a question or instruction sentence.
-_QUESTION_INTENT_WORDS = {
-    "what",
-    "which",
-    "how",
-    "calculate",
-    "compute",
-    "find",
-    "evaluate",
-    "determine",
-    "solve",
-    "sum",
-    "add",
-    "subtract",
-    "multiply",
-    "divide",
-}
+from .shared_keywords import QUESTION_INTENT_WORDS
 
 
 def _find_question_segment(prompt: str) -> str:
@@ -104,7 +88,7 @@ def _find_question_segment(prompt: str) -> str:
         if sentence.rstrip().endswith("?"):
             score += len(sentences) * 2  # strong signal
         first_word = re.match(r"\w+", sentence.lower())
-        if first_word and first_word.group() in _QUESTION_INTENT_WORDS:
+        if first_word and first_word.group() in QUESTION_INTENT_WORDS:
             score += len(sentences)  # moderate signal
         if score > best_score:
             best_score = score

@@ -27,6 +27,7 @@ import re
 from .models import FunctionDefinition, ParameterDefinition
 from .extractors.number import NumberParameterExtractor
 from .extractors.regex import RegexParameterExtractor
+from .extractors.shared_keywords import STOPWORDS
 from .extractors.string import StringParameterExtractor
 from .types import (
     OutputCandidate,
@@ -36,67 +37,9 @@ from .types import (
     ParameterValueSpace,
 )
 
-# Words that carry no semantic signal for function selection.
-_STOPWORDS = {
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "from",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "should",
-    "could",
-    "can",
-    "may",
-    "might",
-    "must",
-    "shall",
-    "all",
-    "each",
-    "every",
-    "both",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "no",
-    "nor",
-    "not",
-    "only",
-    "same",
-    "so",
-    "than",
-    "too",
-    "very",
-    "just",
-    "as",
-    "if",
-}
+_STOPWORDS = STOPWORDS
+
+_NUMERIC_PARAMETER_TYPES = {"number", "integer"}
 
 
 def _tokenize(text: str) -> set[str]:
@@ -163,20 +106,44 @@ class CandidateBuilder:
         the candidate list is never empty and decoding can always proceed.
 
         Args:
-            parameter_type: Schema type string (``"string"`` or ``"number"``).
+            parameter_type: Schema type string (``"string"``, ``"number"``,
+                or ``"integer"``).
 
         Returns:
-            ``""`` for string parameters, ``0`` for number parameters.
+            ``""`` for string parameters, ``0`` for number/integer
+            parameters.
 
         Raises:
             RuntimeError: If *parameter_type* is not a supported type.
         """
         if parameter_type == "string":
             return ""
-        if parameter_type == "number":
+        if parameter_type in _NUMERIC_PARAMETER_TYPES:
             return 0
         raise RuntimeError(
             "unsupported parameter type for constrained decoding: "
+            f"{parameter_type}"
+        )
+
+    def _coerce_numeric_parameter_value(
+        self,
+        parameter_type: str,
+        value: float,
+    ) -> ParameterValue | None:
+        """Convert one extracted numeric value to *parameter_type*.
+
+        ``"number"`` keeps the float value as-is.
+        ``"integer"`` accepts only integral values and converts them to
+        :class:`int`.
+        """
+        if parameter_type == "number":
+            return value
+        if parameter_type == "integer":
+            if value.is_integer():
+                return int(value)
+            return None
+        raise RuntimeError(
+            "unsupported numeric parameter type for constrained decoding: "
             f"{parameter_type}"
         )
 
@@ -196,7 +163,8 @@ class CandidateBuilder:
            regardless of the declared type.
         2. If *parameter_definition.type* is ``"string"``, use
            :class:`~src.decoder.extractors.string.StringParameterExtractor`.
-        3. If *parameter_definition.type* is ``"number"``, use
+          3. If *parameter_definition.type* is ``"number"`` or
+              ``"integer"``, use
            :class:`~src.decoder.extractors.number.NumberParameterExtractor`.
         4. Otherwise fall back to the default value for that type.
 
@@ -222,8 +190,21 @@ class CandidateBuilder:
                     function_name,
                 )
             )
-        if parameter_definition.type == "number":
-            return list(self.number_extractor.extract_candidates(prompt))
+        if parameter_definition.type in _NUMERIC_PARAMETER_TYPES:
+            numeric_values = self.number_extractor.extract_candidates(prompt)
+            if parameter_definition.type == "number":
+                return list(numeric_values)
+            return [
+                coerced
+                for value in numeric_values
+                for coerced in [
+                    self._coerce_numeric_parameter_value(
+                        parameter_definition.type,
+                        value,
+                    )
+                ]
+                if coerced is not None
+            ]
         return [self._default_parameter_value(parameter_definition.type)]
 
     def materialize_candidate_json(
@@ -295,7 +276,8 @@ class CandidateBuilder:
         # Strategy A: sliding-window for all-numeric parameter lists          #
         # ------------------------------------------------------------------ #
         if parameter_names and all(
-            function_definition.parameters[name].type == "number"
+            function_definition.parameters[name].type
+            in _NUMERIC_PARAMETER_TYPES
             for name in parameter_names
         ):
             width = len(parameter_names)
@@ -328,20 +310,48 @@ class CandidateBuilder:
                         for offset, parameter_name in enumerate(
                             parameter_names
                         ):
-                            params[parameter_name] = numeric_values[
-                                window_start + offset
-                            ]
+                            parameter_type = function_definition.parameters[
+                                parameter_name
+                            ].type
+                            raw_value = numeric_values[window_start + offset]
+                            coerced_value = (
+                                self._coerce_numeric_parameter_value(
+                                    parameter_type,
+                                    raw_value,
+                                )
+                            )
+                            if coerced_value is None:
+                                coerced_value = self._default_parameter_value(
+                                    parameter_type
+                                )
+                            params[parameter_name] = coerced_value
                         aligned.append(params)
                 else:
                     # Fewer values than parameters: fill what we have and pad
                     # the remainder with the default value (0).
                     params = {}
                     for offset, parameter_name in enumerate(parameter_names):
+                        parameter_type = function_definition.parameters[
+                            parameter_name
+                        ].type
                         if offset < len(numeric_values):
-                            params[parameter_name] = numeric_values[offset]
+                            raw_value = numeric_values[offset]
+                            coerced_value = (
+                                self._coerce_numeric_parameter_value(
+                                    parameter_type,
+                                    raw_value,
+                                )
+                            )
+                            if coerced_value is None:
+                                coerced_value = (
+                                    self._default_parameter_value(
+                                        parameter_type
+                                    )
+                                )
+                            params[parameter_name] = coerced_value
                         else:
                             params[parameter_name] = (
-                                self._default_parameter_value("number")
+                                self._default_parameter_value(parameter_type)
                             )
                     aligned.append(params)
 

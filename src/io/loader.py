@@ -7,7 +7,7 @@ class makes it straightforward to inject alternative paths in tests.
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..decoder.models import FunctionDefinition
 from ..cli.paths import AppPaths
@@ -18,12 +18,12 @@ class PromptCase(BaseModel):
 
     Attributes:
         prompt: The user-facing text that the decoder will turn into a
-            function call.  Must be at least one character long.
+            function call.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    prompt: str = Field(min_length=1)
+    prompt: str
 
 
 class DatasetFileLoader(BaseModel):
@@ -97,8 +97,9 @@ class DatasetFileLoader(BaseModel):
     def load_prompts(self) -> list[PromptCase]:
         """Load and validate the prompts file.
 
-        The file must contain a JSON array where every element has at least
-        a non-empty ``"prompt"`` string field.
+        The file must contain a JSON array where every element has a
+        ``"prompt"`` string field. Empty/whitespace-only prompts are
+        ignored.
 
         Returns:
             A list of validated prompt cases.
@@ -114,7 +115,14 @@ class DatasetFileLoader(BaseModel):
                 f"{self.paths.prompts_file}"
             )
         try:
-            return [PromptCase.model_validate(item) for item in payload]
+            prompt_cases = [
+                PromptCase.model_validate(item) for item in payload
+            ]
+            return [
+                prompt_case
+                for prompt_case in prompt_cases
+                if prompt_case.prompt.strip()
+            ]
         except ValidationError as exc:
             raise RuntimeError(
                 f"invalid prompt entry in {self.paths.prompts_file}: {exc}"
