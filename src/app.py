@@ -98,7 +98,11 @@ def main() -> int:
     """
     # --- Step 1: parse CLI paths -------------------------------------------
     try:
+        print("[*] Parsing CLI arguments...")
         paths = parse_args(sys.argv[1:])
+        print(f" -   functions definition: {paths.function_definitions_file}")
+        print(f" -   input prompts:        {paths.prompts_file}")
+        print(f" -   output file:          {paths.output_file}")
     except RuntimeError as exc:
         _print_pretty_error(str(exc))
         return 1
@@ -107,6 +111,7 @@ def main() -> int:
 
     # --- Step 2: fail fast on output permission/path errors ------------------
     try:
+        print("[*] Checking output file permissions...")
         ensure_output_writable(paths.output_file)
     except RuntimeError as exc:
         _print_pretty_error(str(exc))
@@ -114,6 +119,7 @@ def main() -> int:
 
     # --- Step 3: load dataset files from disk --------------------------------
     try:
+        print("[*] Loading dataset files...")
         functions = loader.load_functions()
         prompts = loader.load_prompts()
         # Build the name → definition index once so per-prompt lookup is O(1).
@@ -123,6 +129,7 @@ def main() -> int:
         return 1
 
     # --- Step 4: initialise model and decoder --------------------------------
+    print("[*] Initialising model and decoder...")
     llm = Small_LLM_Model()
     decoder = ConstrainedDecoder(
         available_functions=functions, llm=llm, debug=paths.debug
@@ -130,7 +137,7 @@ def main() -> int:
     prompt_builder = PromptContextBuilder()
 
     # --- Step 5: decode each prompt ------------------------------------------
-    #
+    print("[*] Running constrained decoding on prompts...")
     # End-to-end output assembly per prompt:
     #   prompt text
     #     -> tokenizer  -> prompt_ids (list[int])
@@ -141,6 +148,7 @@ def main() -> int:
     try:
         for prompt_case in prompts:
             if not prompt_case.prompt.strip():
+                print("[!] Skipping empty prompt")
                 continue
 
             # Tokenise the raw prompt so the decoder can use it as a
@@ -190,6 +198,7 @@ def main() -> int:
 
     # --- Step 6: write output ------------------------------------------------
     try:
+        print("[*] Writing results to output file...")
         output_results(paths.output_file, generated_results)
     except RuntimeError as exc:
         _print_pretty_error(str(exc))
